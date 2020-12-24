@@ -1,0 +1,10 @@
+<instr>: <mov>
+<instr>: <add>
+
+<mov>: mov reg unsigned_imm
+<mov>: mov reg signed_imm
+<mov>: mov reg reg
+
+<add>: add reg unsigned_imm
+<add>: add reg signed_imm
+<add>: add reg reg
