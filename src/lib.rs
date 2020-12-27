@@ -36,62 +36,18 @@ impl Token {
 
 pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
     let mut tokens = Vec::default();
-
-    fn label(stream: &mut Peekable<Chars>) -> Token {
-        let mut label_name = String::default();
-        while let Some(c) = stream.next() {
-            if c == ':' {
-                break;
-            } else {
-                label_name.push(c);
-            }
-        }
-
-        Token::Label(label_name)
-    }
-
     while let Some(c) = stream.next() {
-        if c == '\n' || c == ',' || c == ' ' {
-            continue;
-        }
-
-        if c == ';' {
-            while let Some(c) = stream.next() {
-                if c == '\n' {
-                    break;
-                }
-            }
-
-            continue;
-        }
-
         match c {
-            'm' => match stream.next() {
-                Some('o') => match stream.peek() {
-                    Some('v') => {
-                        stream.next();
-                        tokens.push(Token::Mov)
-                    }
-                    Some(_) => tokens.push(label(&mut stream)),
-                    _ => panic!("unexpected character"),
-                },
-                Some(_) => tokens.push(label(&mut stream)),
-                _ => panic!("unexpected character"),
-            },
-
-            'a' => match stream.next() {
-                Some('x') => tokens.push(Token::Reg(RegisterTag::Ax)),
-                Some('d') => {
-                    if let Some('d') = stream.next() {
-                        tokens.push(Token::Add);
+            '\n' | ',' | ' ' => {}
+            ';' => {
+                while let Some(c) = stream.next() {
+                    if c == '\n' {
+                        break;
                     }
                 }
-                _ => panic!("unknown token"),
-            },
-            'b' => match stream.next() {
-                Some('x') => tokens.push(Token::Reg(RegisterTag::Bx)),
-                _ => panic!("unknown token"),
-            },
+
+                continue;
+            }
             '-' => {
                 let mut buffer = String::from('-');
                 while let Some(d) = stream.peek() {
@@ -105,7 +61,6 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                     format!("{} is not a valid signed 16 bit integer", buffer).as_str(),
                 )));
             }
-
             c => {
                 if c.is_ascii_digit() {
                     let mut buffer = String::from(c);
@@ -122,7 +77,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                 } else {
                     let mut scratch = String::from(c);
                     while let Some(c) = stream.next() {
-                        if c == ' ' || c == '\n' {
+                        if c == ',' || c == ' ' || c == '\n' {
                             break;
                         }
 
@@ -136,9 +91,13 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                     }
 
                     match scratch.as_str() {
+                        "ax" => tokens.push(Token::Reg(RegisterTag::Ax)),
+                        "bx" => tokens.push(Token::Reg(RegisterTag::Bx)),
+                        "add" => tokens.push(Token::Add),
+                        "cmp" => tokens.push(Token::Cmp),
                         "jmp" => tokens.push(Token::Jmp),
                         "jne" => tokens.push(Token::Jne),
-                        "cmp" => tokens.push(Token::Cmp),
+                        "mov" => tokens.push(Token::Mov),
                         _ => tokens.push(Token::Iden(scratch)),
                     }
                 }
@@ -152,11 +111,14 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
 type SymbolTable = HashMap<String, usize>;
 pub struct Program(SymbolTable, Vec<Op>);
 
-pub fn parse<I: Iterator<Item = Token>>(mut tokens: Peekable<I>) -> Program {
-    fn mov<I: Iterator<Item = Token>>(
-        stream: &mut Peekable<I>,
-        _label_stack: &mut Vec<String>,
-    ) -> Option<Op> {
+pub fn parse<I>(mut tokens: Peekable<I>) -> Program
+where
+    I: Iterator<Item = Token>,
+{
+    fn mov<I>(stream: &mut Peekable<I>) -> Option<Op>
+    where
+        I: Iterator<Item = Token>,
+    {
         let dst = stream.next().unwrap().unwrap_reg();
         match stream.next() {
             Some(Token::Reg(src)) => Some(Op::MovReg(dst, src)),
@@ -166,10 +128,10 @@ pub fn parse<I: Iterator<Item = Token>>(mut tokens: Peekable<I>) -> Program {
         }
     }
 
-    fn add<I: Iterator<Item = Token>>(
-        stream: &mut Peekable<I>,
-        _label_stack: &mut Vec<String>,
-    ) -> Option<Op> {
+    fn add<I>(stream: &mut Peekable<I>) -> Option<Op>
+    where
+        I: Iterator<Item = Token>,
+    {
         let dst = stream.next().unwrap().unwrap_reg();
         match stream.next() {
             Some(Token::Reg(src)) => Some(Op::AddReg(dst, src)),
@@ -178,26 +140,26 @@ pub fn parse<I: Iterator<Item = Token>>(mut tokens: Peekable<I>) -> Program {
         }
     }
 
-    fn jmp<I: Iterator<Item = Token>>(
-        stream: &mut Peekable<I>,
-        _label_stack: &mut Vec<String>,
-    ) -> Option<Op> {
+    fn jmp<I>(stream: &mut Peekable<I>) -> Option<Op>
+    where
+        I: Iterator<Item = Token>,
+    {
         let label = stream.next().unwrap().unwrap_iden();
         Some(Op::Jmp(label))
     }
 
-    fn jne<I: Iterator<Item = Token>>(
-        stream: &mut Peekable<I>,
-        _label_stack: &mut Vec<String>,
-    ) -> Option<Op> {
+    fn jne<I>(stream: &mut Peekable<I>) -> Option<Op>
+    where
+        I: Iterator<Item = Token>,
+    {
         let label = stream.next().unwrap().unwrap_iden();
         Some(Op::Jne(label))
     }
 
-    fn cmp<I: Iterator<Item = Token>>(
-        stream: &mut Peekable<I>,
-        _label_stack: &mut Vec<String>,
-    ) -> Option<Op> {
+    fn cmp<I>(stream: &mut Peekable<I>) -> Option<Op>
+    where
+        I: Iterator<Item = Token>,
+    {
         let dst = stream.next().unwrap().unwrap_reg();
         match stream.next() {
             Some(Token::SignedImm(src)) => Some(Op::CmpImm(dst, src)),
@@ -206,20 +168,20 @@ pub fn parse<I: Iterator<Item = Token>>(mut tokens: Peekable<I>) -> Program {
         }
     }
 
-    fn instr<I: Iterator<Item = Token>>(
-        stream: &mut Peekable<I>,
-        label_stack: &mut Vec<String>,
-    ) -> Option<Op> {
+    fn instr<I>(stream: &mut Peekable<I>, label_stack: &mut Vec<String>) -> Option<Op>
+    where
+        I: Iterator<Item = Token>,
+    {
         match stream.next() {
-            Some(Token::Mov) => mov(stream, label_stack),
-            Some(Token::Add) => add(stream, label_stack),
+            Some(Token::Mov) => mov(stream),
+            Some(Token::Add) => add(stream),
             Some(Token::Label(s)) => {
                 label_stack.push(s);
                 None
             }
-            Some(Token::Jmp) => jmp(stream, label_stack),
-            Some(Token::Jne) => jne(stream, label_stack),
-            Some(Token::Cmp) => cmp(stream, label_stack),
+            Some(Token::Jmp) => jmp(stream),
+            Some(Token::Jne) => jne(stream),
+            Some(Token::Cmp) => cmp(stream),
             c => panic!(format!("uh-oh! -- {:?}", c)),
         }
     }
@@ -311,8 +273,6 @@ impl RegisterMachine for Vm {
 
     // Updates AF, CF, OF, PF, SF, and ZF
     fn compare_imm(&mut self, dst: RegisterTag, src: i16) {
-        dbg!(&self);
-
         let dst = self.register_from_tag(dst).value();
 
         let r = dst - src;
@@ -385,16 +345,7 @@ impl Vm {
 
     pub fn run(&mut self, program: Program) -> Result<(), Box<dyn Error>> {
         let Program(_symbols, instructions) = program;
-        while self.ip < instructions.len() {
-            self.jumped = false;
-            let op = instructions.get(self.ip).unwrap();
-            dbg!(&op, &self);
-            op.eval(self);
-
-            if !self.jumped {
-                self.ip += 1;
-            }
-            dbg!(&op, &self, &instructions);
+        for op in instructions {
             op.eval(self);
         }
 
