@@ -11,6 +11,7 @@ pub enum Token {
     Iden(String),
     Jmp,
     Jne,
+    Je,
     Label(String),
     Mov,
     Reg(RegisterTag),
@@ -97,6 +98,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         "cmp" => tokens.push(Token::Cmp),
                         "jmp" => tokens.push(Token::Jmp),
                         "jne" => tokens.push(Token::Jne),
+                        "je" => tokens.push(Token::Je),
                         "mov" => tokens.push(Token::Mov),
                         _ => tokens.push(Token::Iden(scratch)),
                     }
@@ -156,6 +158,14 @@ where
         Some(Op::Jne(label))
     }
 
+    fn je<I>(stream: &mut Peekable<I>) -> Option<Op>
+    where
+        I: Iterator<Item = Token>,
+    {
+        let label = stream.next().unwrap().unwrap_iden();
+        Some(Op::Je(label))
+    }
+
     fn cmp<I>(stream: &mut Peekable<I>) -> Option<Op>
     where
         I: Iterator<Item = Token>,
@@ -181,6 +191,7 @@ where
             }
             Some(Token::Jmp) => jmp(stream),
             Some(Token::Jne) => jne(stream),
+            Some(Token::Je) => je(stream),
             Some(Token::Cmp) => cmp(stream),
             c => panic!(format!("uh-oh! -- {:?}", c)),
         }
@@ -201,6 +212,7 @@ where
         }
     }
 
+    ops.push(Op::Halt);
     Program(symbol_table, ops)
 }
 
@@ -240,6 +252,8 @@ pub trait RegisterMachine {
     fn add_reg_unsigned(&mut self, dst: RegisterTag, src: RegisterTag);
     fn unconditional_jump(&mut self, label: &str);
     fn jump_not_equal(&mut self, label: &str);
+    fn jump_equal(&mut self, label: &str);
+    fn halt(&mut self);
     // FIXME maybe this doesn't belong here ...
     fn register_from_tag(&mut self, tag: RegisterTag) -> &mut Register;
 }
@@ -256,7 +270,7 @@ pub struct Vm {
     of: u8,
     ip: usize,
     symbol_table: SymbolTable,
-    jumped: bool,
+    halt: bool,
 }
 
 impl RegisterMachine for Vm {
@@ -307,15 +321,24 @@ impl RegisterMachine for Vm {
     fn unconditional_jump(&mut self, label: &str) {
         // TODO: handle failure
         self.ip = *self.symbol_table.get(label).unwrap();
-        self.jumped = true;
     }
 
     fn jump_not_equal(&mut self, label: &str) {
         if self.zf == 0 {
             // TODO: handle failure
             self.ip = *self.symbol_table.get(label).unwrap();
-            self.jumped = true;
         }
+    }
+
+    fn jump_equal(&mut self, label: &str) {
+        if self.zf == 1 {
+            // TODO: handle failure
+            self.ip = *self.symbol_table.get(label).unwrap();
+        }
+    }
+
+    fn halt(&mut self) {
+        self.halt = true;
     }
 
     fn register_from_tag(&mut self, tag: RegisterTag) -> &mut Register {
@@ -339,7 +362,7 @@ impl Vm {
             of: 0,
             ip: 0,
             symbol_table: HashMap::default(),
-            jumped: false,
+            halt: false,
         }
     }
 
@@ -347,7 +370,9 @@ impl Vm {
         let Program(symbols, instructions) = program;
         self.symbol_table = symbols;
 
-        for op in instructions {
+        while !self.halt {
+            let op = instructions.get(self.ip).unwrap();
+            self.ip = self.ip + 1;
             op.eval(self);
         }
 
@@ -384,7 +409,9 @@ pub enum Op {
     AddImmUnsigned(RegisterTag, u16),
     AddReg(RegisterTag, RegisterTag),
     Jmp(String),
+    Je(String),
     Jne(String),
+    Halt, //< Implementation detail
 }
 
 impl Op {
@@ -397,6 +424,8 @@ impl Op {
             Self::AddReg(dst, src) => machine.add_reg_unsigned(*dst, *src),
             Self::Jmp(label) => machine.unconditional_jump(label),
             Self::Jne(label) => machine.jump_not_equal(label),
+            Self::Je(label) => machine.jump_equal(label),
+            Self::Halt => machine.halt(),
         }
     }
 }

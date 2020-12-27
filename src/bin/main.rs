@@ -18,6 +18,7 @@ fn repl() {
 
     let mut vm = Vm::new();
     vm.run(ops).expect("uh-oh!");
+    vm.dump();
 }
 
 fn main() {
