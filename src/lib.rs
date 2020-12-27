@@ -344,7 +344,9 @@ impl Vm {
     }
 
     pub fn run(&mut self, program: Program) -> Result<(), Box<dyn Error>> {
-        let Program(_symbols, instructions) = program;
+        let Program(symbols, instructions) = program;
+        self.symbol_table = symbols;
+
         for op in instructions {
             op.eval(self);
         }
