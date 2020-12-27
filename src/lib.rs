@@ -1,11 +1,17 @@
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
 use std::iter::Peekable;
 use std::str::Chars;
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Debug)]
 pub enum Token {
     Add,
+    Cmp,
+    Iden(String),
+    Jmp,
+    Jne,
+    Label(String),
     Mov,
     Reg(RegisterTag),
     SignedImm(i16),
@@ -19,10 +25,30 @@ impl Token {
             _ => panic!("not a register!"),
         }
     }
+
+    fn unwrap_iden(self) -> String {
+        match self {
+            Self::Iden(i) => i,
+            c => panic!("{:?} -- not an identifier", c),
+        }
+    }
 }
 
 pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
     let mut tokens = Vec::default();
+
+    fn label(stream: &mut Peekable<Chars>) -> Token {
+        let mut label_name = String::default();
+        while let Some(c) = stream.next() {
+            if c == ':' {
+                break;
+            } else {
+                label_name.push(c);
+            }
+        }
+
+        Token::Label(label_name)
+    }
 
     while let Some(c) = stream.next() {
         if c == '\n' || c == ',' || c == ' ' {
@@ -41,10 +67,15 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
 
         match c {
             'm' => match stream.next() {
-                Some('o') => match stream.next() {
-                    Some('v') => tokens.push(Token::Mov),
+                Some('o') => match stream.peek() {
+                    Some('v') => {
+                        stream.next();
+                        tokens.push(Token::Mov)
+                    }
+                    Some(_) => tokens.push(label(&mut stream)),
                     _ => panic!("unexpected character"),
                 },
+                Some(_) => tokens.push(label(&mut stream)),
                 _ => panic!("unexpected character"),
             },
 
@@ -89,7 +120,27 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         format!("{} is not a valid signed 16 bit integer", buffer).as_str(),
                     )));
                 } else {
-                    eprintln!("error: unexpected char: {}", c);
+                    let mut scratch = String::from(c);
+                    while let Some(c) = stream.next() {
+                        if c == ' ' || c == '\n' {
+                            break;
+                        }
+
+                        scratch.push(c);
+                    }
+
+                    if scratch.ends_with(":") {
+                        scratch.pop();
+                        tokens.push(Token::Label(scratch));
+                        continue;
+                    }
+
+                    match scratch.as_str() {
+                        "jmp" => tokens.push(Token::Jmp),
+                        "jne" => tokens.push(Token::Jne),
+                        "cmp" => tokens.push(Token::Cmp),
+                        _ => tokens.push(Token::Iden(scratch)),
+                    }
                 }
             }
         };
@@ -98,40 +149,97 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
     tokens
 }
 
-pub fn parse<I: Iterator<Item = Token>>(mut tokens: Peekable<I>) -> Vec<Op> {
-    fn mov<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Op {
+type SymbolTable = HashMap<String, usize>;
+pub struct Program(SymbolTable, Vec<Op>);
+
+pub fn parse<I: Iterator<Item = Token>>(mut tokens: Peekable<I>) -> Program {
+    fn mov<I: Iterator<Item = Token>>(
+        stream: &mut Peekable<I>,
+        _label_stack: &mut Vec<String>,
+    ) -> Option<Op> {
         let dst = stream.next().unwrap().unwrap_reg();
         match stream.next() {
-            Some(Token::Reg(src)) => Op::MovReg(dst, src),
-            Some(Token::SignedImm(src)) => Op::MovImm(dst, src),
-            Some(Token::UnsignedImm(src)) => Op::MovImm(dst, src.try_into().unwrap()),
+            Some(Token::Reg(src)) => Some(Op::MovReg(dst, src)),
+            Some(Token::SignedImm(src)) => Some(Op::MovImm(dst, src)),
+            Some(Token::UnsignedImm(src)) => Some(Op::MovImm(dst, src.try_into().unwrap())),
             _ => panic!("invalid mov"),
         }
     }
 
-    fn add<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Op {
+    fn add<I: Iterator<Item = Token>>(
+        stream: &mut Peekable<I>,
+        _label_stack: &mut Vec<String>,
+    ) -> Option<Op> {
         let dst = stream.next().unwrap().unwrap_reg();
         match stream.next() {
-            Some(Token::Reg(src)) => Op::AddReg(dst, src),
-            Some(Token::UnsignedImm(src)) => Op::AddImmUnsigned(dst, src),
+            Some(Token::Reg(src)) => Some(Op::AddReg(dst, src)),
+            Some(Token::UnsignedImm(src)) => Some(Op::AddImmUnsigned(dst, src)),
             _ => panic!("invalid mov"),
         }
     }
 
-    fn instr<I: Iterator<Item = Token>>(stream: &mut Peekable<I>) -> Op {
+    fn jmp<I: Iterator<Item = Token>>(
+        stream: &mut Peekable<I>,
+        _label_stack: &mut Vec<String>,
+    ) -> Option<Op> {
+        let label = stream.next().unwrap().unwrap_iden();
+        Some(Op::Jmp(label))
+    }
+
+    fn jne<I: Iterator<Item = Token>>(
+        stream: &mut Peekable<I>,
+        _label_stack: &mut Vec<String>,
+    ) -> Option<Op> {
+        let label = stream.next().unwrap().unwrap_iden();
+        Some(Op::Jne(label))
+    }
+
+    fn cmp<I: Iterator<Item = Token>>(
+        stream: &mut Peekable<I>,
+        _label_stack: &mut Vec<String>,
+    ) -> Option<Op> {
+        let dst = stream.next().unwrap().unwrap_reg();
         match stream.next() {
-            Some(Token::Mov) => mov(stream),
-            Some(Token::Add) => add(stream),
-            _ => panic!("uh-oh!"),
+            Some(Token::SignedImm(src)) => Some(Op::CmpImm(dst, src)),
+            Some(Token::UnsignedImm(src)) => Some(Op::CmpImm(dst, src as i16)),
+            c => todo!("{}", format!("{:?}", c)),
+        }
+    }
+
+    fn instr<I: Iterator<Item = Token>>(
+        stream: &mut Peekable<I>,
+        label_stack: &mut Vec<String>,
+    ) -> Option<Op> {
+        match stream.next() {
+            Some(Token::Mov) => mov(stream, label_stack),
+            Some(Token::Add) => add(stream, label_stack),
+            Some(Token::Label(s)) => {
+                label_stack.push(s);
+                None
+            }
+            Some(Token::Jmp) => jmp(stream, label_stack),
+            Some(Token::Jne) => jne(stream, label_stack),
+            Some(Token::Cmp) => cmp(stream, label_stack),
+            c => panic!(format!("uh-oh! -- {:?}", c)),
         }
     }
 
     let mut ops = Vec::default();
+    let mut symbol_table: SymbolTable = HashMap::new();
+    let mut label_stack = Vec::default();
+
     while tokens.peek().is_some() {
-        ops.push(instr(&mut tokens));
+        if let Some(label) = label_stack.pop() {
+            symbol_table.insert(label, ops.len());
+            assert_eq!(label_stack.len(), 0);
+        }
+
+        if let Some(op) = instr(&mut tokens, &mut label_stack) {
+            ops.push(op);
+        }
     }
 
-    ops
+    Program(symbol_table, ops)
 }
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -168,10 +276,13 @@ pub trait RegisterMachine {
     fn compare_imm(&mut self, reg: RegisterTag, value: i16);
     fn add_imm_unsigned(&mut self, reg: RegisterTag, value: u16);
     fn add_reg_unsigned(&mut self, dst: RegisterTag, src: RegisterTag);
+    fn unconditional_jump(&mut self, label: &str);
+    fn jump_not_equal(&mut self, label: &str);
     // FIXME maybe this doesn't belong here ...
     fn register_from_tag(&mut self, tag: RegisterTag) -> &mut Register;
 }
 
+#[derive(Debug)]
 pub struct Vm {
     ax: Register,
     bx: Register,
@@ -181,6 +292,9 @@ pub struct Vm {
     zf: u8,
     pf: u8,
     of: u8,
+    ip: usize,
+    symbol_table: SymbolTable,
+    jumped: bool,
 }
 
 impl RegisterMachine for Vm {
@@ -197,6 +311,8 @@ impl RegisterMachine for Vm {
 
     // Updates AF, CF, OF, PF, SF, and ZF
     fn compare_imm(&mut self, dst: RegisterTag, src: i16) {
+        dbg!(&self);
+
         let dst = self.register_from_tag(dst).value();
 
         let r = dst - src;
@@ -228,6 +344,20 @@ impl RegisterMachine for Vm {
         dst.update(dst.value() + src);
     }
 
+    fn unconditional_jump(&mut self, label: &str) {
+        // TODO: handle failure
+        self.ip = *self.symbol_table.get(label).unwrap();
+        self.jumped = true;
+    }
+
+    fn jump_not_equal(&mut self, label: &str) {
+        if self.zf == 0 {
+            // TODO: handle failure
+            self.ip = *self.symbol_table.get(label).unwrap();
+            self.jumped = true;
+        }
+    }
+
     fn register_from_tag(&mut self, tag: RegisterTag) -> &mut Register {
         match tag {
             RegisterTag::Ax => &mut self.ax,
@@ -247,12 +377,25 @@ impl Vm {
             zf: 0,
             pf: 0,
             of: 0,
+            ip: 0,
+            symbol_table: HashMap::default(),
+            jumped: false,
         }
     }
 
-    pub fn run(&mut self, instructions: Vec<Op>) -> Result<(), Box<dyn Error>> {
-        for instruction in instructions {
-            instruction.eval(self);
+    pub fn run(&mut self, program: Program) -> Result<(), Box<dyn Error>> {
+        let Program(_symbols, instructions) = program;
+        while self.ip < instructions.len() {
+            self.jumped = false;
+            let op = instructions.get(self.ip).unwrap();
+            dbg!(&op, &self);
+            op.eval(self);
+
+            if !self.jumped {
+                self.ip += 1;
+            }
+            dbg!(&op, &self, &instructions);
+            op.eval(self);
         }
 
         Ok(())
@@ -280,23 +423,27 @@ impl Vm {
     }
 }
 
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(PartialEq, Debug)]
 pub enum Op {
     MovImm(RegisterTag, i16),
     MovReg(RegisterTag, RegisterTag),
     CmpImm(RegisterTag, i16),
     AddImmUnsigned(RegisterTag, u16),
     AddReg(RegisterTag, RegisterTag),
+    Jmp(String),
+    Jne(String),
 }
 
 impl Op {
-    pub fn eval<T: RegisterMachine>(self, machine: &mut T) {
+    pub fn eval<T: RegisterMachine>(&self, machine: &mut T) {
         match self {
-            Self::MovImm(dst, src) => machine.update_imm(dst, src),
-            Self::MovReg(dst, src) => machine.update_reg(dst, src),
-            Self::CmpImm(dst, src) => machine.compare_imm(dst, src),
-            Self::AddImmUnsigned(dst, src) => machine.add_imm_unsigned(dst, src),
-            Self::AddReg(dst, src) => machine.add_reg_unsigned(dst, src),
+            Self::MovImm(dst, src) => machine.update_imm(*dst, *src),
+            Self::MovReg(dst, src) => machine.update_reg(*dst, *src),
+            Self::CmpImm(dst, src) => machine.compare_imm(*dst, *src),
+            Self::AddImmUnsigned(dst, src) => machine.add_imm_unsigned(*dst, *src),
+            Self::AddReg(dst, src) => machine.add_reg_unsigned(*dst, *src),
+            Self::Jmp(label) => machine.unconditional_jump(label),
+            Self::Jne(label) => machine.jump_not_equal(label),
         }
     }
 }
@@ -326,17 +473,32 @@ mod tests {
     #[test]
     fn simple_parse() {
         let tokens = lex("mov ax, 42".chars().peekable()).into_iter();
-        let mut ops = parse(tokens.into_iter().peekable()).into_iter();
+        let mut ops = parse(tokens.into_iter().peekable()).1.into_iter();
         assert_eq!(Some(Op::MovImm(RegisterTag::Ax, 42)), ops.next());
         assert_eq!(None, ops.next());
     }
 
     #[test]
+    fn parse_labels() {
+        let tokens = vec![
+            Token::Add, // Op 0
+            Token::Reg(RegisterTag::Ax),
+            Token::Reg(RegisterTag::Bx),
+            Token::Label("Foo".to_owned()),
+            Token::Add, // Op 1
+            Token::Reg(RegisterTag::Ax),
+            Token::Reg(RegisterTag::Ax),
+        ];
+        let Program(symbols, _) = parse(tokens.into_iter().peekable());
+        assert_eq!(symbols.get("Foo"), Some(&(1 as usize)));
+    }
+
+    #[test]
     fn mov_imm() {
-        let instructions = vec![Op::MovImm(RegisterTag::Ax, 42)];
+        let program = Program(HashMap::default(), vec![Op::MovImm(RegisterTag::Ax, 42)]);
 
         let mut vm = Vm::new();
-        vm.run(instructions).expect("Invalid instruction");
+        vm.run(program).expect("Invalid instruction");
 
         assert_eq!(vm.ax(), 42);
         assert_eq!(vm.bx(), 0);
@@ -344,14 +506,17 @@ mod tests {
 
     #[test]
     fn mov_reg() {
-        let instructions = vec![
-            Op::MovImm(RegisterTag::Ax, 42),
-            Op::MovReg(RegisterTag::Bx, RegisterTag::Ax),
-        ];
+        let program = Program(
+            HashMap::default(),
+            vec![
+                Op::MovImm(RegisterTag::Ax, 42),
+                Op::MovReg(RegisterTag::Bx, RegisterTag::Ax),
+            ],
+        );
 
         let mut vm = Vm::new();
 
-        vm.run(instructions).expect("Invalid instruction");
+        vm.run(program).expect("Invalid instruction");
 
         assert_eq!(vm.ax(), 42);
         assert_eq!(vm.bx(), 42);
@@ -359,29 +524,35 @@ mod tests {
 
     #[test]
     fn add_imm() {
-        let instructions = vec![
-            Op::MovImm(RegisterTag::Ax, 42),
-            Op::AddImmUnsigned(RegisterTag::Ax, 100),
-        ];
+        let program = Program(
+            HashMap::default(),
+            vec![
+                Op::MovImm(RegisterTag::Ax, 42),
+                Op::AddImmUnsigned(RegisterTag::Ax, 100),
+            ],
+        );
 
         let mut vm = Vm::new();
 
-        vm.run(instructions).expect("Invalid instruction");
+        vm.run(program).expect("Invalid instruction");
 
         assert_eq!(vm.ax(), 142);
     }
 
     #[test]
     fn add_reg() {
-        let instructions = vec![
-            Op::MovImm(RegisterTag::Ax, 42),
-            Op::MovImm(RegisterTag::Bx, 20),
-            Op::AddReg(RegisterTag::Ax, RegisterTag::Bx),
-        ];
+        let program = Program(
+            HashMap::default(),
+            vec![
+                Op::MovImm(RegisterTag::Ax, 42),
+                Op::MovImm(RegisterTag::Bx, 20),
+                Op::AddReg(RegisterTag::Ax, RegisterTag::Bx),
+            ],
+        );
 
         let mut vm = Vm::new();
 
-        vm.run(instructions).expect("Invalid instruction");
+        vm.run(program).expect("Invalid instruction");
 
         assert_eq!(vm.ax(), 62);
     }

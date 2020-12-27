@@ -19,7 +19,6 @@ fn repl() {
         let tokens = lex(buffer.chars().peekable());
         let ops = parse(tokens.into_iter().peekable());
         vm.run(ops).expect("uh-oh!");
-        vm.dump();
     }
 }
 
