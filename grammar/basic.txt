@@ -1,4 +1,11 @@
-<program>    ::= <instr_list> halt
+<program>    ::= <stmt_list> <end> halt
+
+<stmt_list>  ::= <procedure> <instr_list>
+<stmt_list>  ::= <instr_list>
+
+<end>        ::= end iden
+
+<procedure>  ::= iden proc <instr_list> iden endp
 
 <instr_list> ::= <label> <instr>
 <instr_list> ::= <label> <instr> <instr_list>

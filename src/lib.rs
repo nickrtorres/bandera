@@ -3,7 +3,12 @@ use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::Debug;
 use std::iter::Peekable;
+use std::mem::discriminant;
 use std::str::Chars;
+
+// Ironically, the entry point to the assembler program is the symbol marked
+// 'END'
+const ENTRY_POINT: &str = "END";
 
 #[derive(PartialEq, Debug)]
 pub enum Token {
@@ -18,6 +23,9 @@ pub enum Token {
     Reg(RegisterTag),
     SignedImm(i16),
     UnsignedImm(u16),
+    Proc,
+    Endp,
+    End,
 }
 
 impl Token {
@@ -39,6 +47,14 @@ impl Token {
         match self {
             Self::Label(s) => s,
             c => panic!("{:?} -- not a label", c),
+        }
+    }
+
+    fn is_endp(&self) -> bool {
+        if let Token::Endp = self {
+            true
+        } else {
+            false
         }
     }
 }
@@ -104,10 +120,13 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         "bx" => tokens.push(Token::Reg(RegisterTag::Bx)),
                         "add" => tokens.push(Token::Add),
                         "cmp" => tokens.push(Token::Cmp),
+                        "endp" => tokens.push(Token::Endp),
+                        "end" => tokens.push(Token::End),
+                        "je" => tokens.push(Token::Je),
                         "jmp" => tokens.push(Token::Jmp),
                         "jne" => tokens.push(Token::Jne),
-                        "je" => tokens.push(Token::Je),
                         "mov" => tokens.push(Token::Mov),
+                        "proc" => tokens.push(Token::Proc),
                         _ => tokens.push(Token::Iden(scratch)),
                     }
                 }
@@ -119,6 +138,8 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
 }
 
 type SymbolTable = HashMap<String, usize>;
+
+#[derive(Debug)]
 pub struct Program(SymbolTable, Vec<Op>);
 
 pub struct Parser<I: Iterator<Item = Token> + Debug> {
@@ -138,11 +159,20 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         }
     }
 
+    fn expect(&mut self, expected: Token) {
+        if !self.tokens.next().map_or(false, move |actual| {
+            discriminant(&expected) == discriminant(&actual)
+        }) {
+            panic!();
+        }
+    }
+
     pub fn run(self) -> Program {
         self.program()
     }
 
     fn mov(&mut self) {
+        self.tokens.next().unwrap(); // consume MOV
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::MovReg(dst, src)),
@@ -155,6 +185,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn add(&mut self) {
+        self.tokens.next().unwrap(); // consume ADD
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::AddReg(dst, src)),
@@ -174,6 +205,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn cmp(&mut self) {
+        self.tokens.next().unwrap(); // consume CMP
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
         match self.tokens.next() {
             Some(Token::SignedImm(src)) => self.ops.push(Op::CmpImm(dst, src)),
@@ -187,15 +219,16 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
             self.symbol_table.insert(label, self.ops.len());
         }
 
-        match self.tokens.next() {
+        match self.tokens.peek() {
             Some(Token::Mov) => self.mov(),
             Some(Token::Add) => self.add(),
             Some(Token::Cmp) => self.cmp(),
-            Some(token) => {
+            Some(Token::Jmp) | Some(Token::Jne) | Some(Token::Je) => {
+                let token = self.tokens.next().unwrap();
                 let next = self.tokens.next().unwrap();
                 self.jump(token, next)
             }
-            _ => todo!(),
+            _ => {}
         }
     }
 
@@ -208,21 +241,53 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn instr_list(&mut self) {
         match self.tokens.peek() {
-            Some(Token::Label(_)) => {
-                self.label();
+            Some(Token::End) | Some(Token::Iden(_)) | None => {}
+            Some(token) => {
+                if let Token::Label(_) = token {
+                    self.label();
+                }
+
                 self.instr();
                 self.instr_list();
             }
-            Some(_) => {
-                self.instr();
-                self.instr_list();
-            }
-            None => {}
         }
     }
 
-    fn program(mut self) -> Program {
+    fn procedure(&mut self) {
+        // TODO add a declare / define symbol methods
+        let iden = self.tokens.next().unwrap().into_iden_unchecked();
+        assert!(self.pending_symbol.is_none());
+        self.pending_symbol = Some(iden);
+
+        self.tokens.next().unwrap(); // consume PROC
+
         self.instr_list();
+
+        self.expect(Token::Iden(String::default()));
+
+        let _endp = self.tokens.next().unwrap().is_endp();
+    }
+
+    fn stmt_list(&mut self) {
+        match self.tokens.peek() {
+            Some(Token::Iden(_)) => {
+                self.procedure();
+                self.instr_list();
+            }
+            _ => self.instr_list(),
+        }
+    }
+
+    fn end(&mut self) {
+        self.expect(Token::End);
+        let symbol = self.tokens.next().unwrap().into_iden_unchecked();
+        let offset = *self.symbol_table.get(&symbol).unwrap();
+        self.symbol_table.insert(ENTRY_POINT.to_owned(), offset);
+    }
+
+    fn program(mut self) -> Program {
+        self.stmt_list();
+        self.end();
         self.ops.push(Op::Halt);
         Program(self.symbol_table, self.ops)
     }
@@ -245,10 +310,6 @@ pub struct Register {
 impl Register {
     fn new() -> Self {
         Register { value: 0 }
-    }
-
-    fn with_value(value: i16) -> Self {
-        Register { value }
     }
 
     fn update(&mut self, src: i16) {
@@ -391,6 +452,7 @@ impl Vm {
     pub fn run(&mut self, program: Program) -> Result<(), Box<dyn Error>> {
         let Program(symbols, instructions) = program;
         self.symbol_table = symbols;
+        self.ip = *self.symbol_table.get(ENTRY_POINT).unwrap();
 
         while !self.halt {
             let op = instructions.get(self.ip).unwrap();
@@ -466,7 +528,7 @@ mod tests {
 
     #[test]
     fn simple_parse() {
-        let tokens = lex("mov ax, 42".chars().peekable()).into_iter();
+        let tokens = lex("main:\nmov ax, 42\nend main".chars().peekable()).into_iter();
         let mut ops = Parser::new(tokens.into_iter().peekable())
             .run()
             .1
@@ -479,6 +541,7 @@ mod tests {
     #[test]
     fn parse_labels() {
         let tokens = vec![
+            Token::Label(String::from("main")),
             Token::Add, // Op 0
             Token::Reg(RegisterTag::Ax),
             Token::Reg(RegisterTag::Bx),
@@ -486,100 +549,10 @@ mod tests {
             Token::Add, // Op 1
             Token::Reg(RegisterTag::Ax),
             Token::Reg(RegisterTag::Ax),
+            Token::End,
+            Token::Iden(String::from("main")),
         ];
         let Program(symbols, _) = Parser::new(tokens.into_iter().peekable()).run();
         assert_eq!(symbols.get("Foo"), Some(&(1 as usize)));
-    }
-
-    #[test]
-    fn mov_imm() {
-        let expected = MachineState {
-            ax: Register::with_value(42),
-            bx: Register::with_value(0),
-        };
-
-        let program = Program(
-            HashMap::default(),
-            vec![Op::MovImm(RegisterTag::Ax, 42), Op::Halt],
-        );
-
-        let mut vm = Vm::new();
-        vm.run(program).expect("Invalid instruction");
-        let actual = vm.state();
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn mov_reg() {
-        let expected = MachineState {
-            ax: Register::with_value(42),
-            bx: Register::with_value(42),
-        };
-
-        let program = Program(
-            HashMap::default(),
-            vec![
-                Op::MovImm(RegisterTag::Ax, 42),
-                Op::MovReg(RegisterTag::Bx, RegisterTag::Ax),
-                Op::Halt,
-            ],
-        );
-
-        let mut vm = Vm::new();
-
-        vm.run(program).expect("Invalid instruction");
-        let actual = vm.state();
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn add_imm() {
-        let expected = MachineState {
-            ax: Register::with_value(142),
-            bx: Register::with_value(0),
-        };
-
-        let program = Program(
-            HashMap::default(),
-            vec![
-                Op::MovImm(RegisterTag::Ax, 42),
-                Op::AddImmUnsigned(RegisterTag::Ax, 100),
-                Op::Halt,
-            ],
-        );
-
-        let mut vm = Vm::new();
-
-        vm.run(program).expect("Invalid instruction");
-        let actual = vm.state();
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn add_reg() {
-        let expected = MachineState {
-            ax: Register::with_value(62),
-            bx: Register::with_value(20),
-        };
-
-        let program = Program(
-            HashMap::default(),
-            vec![
-                Op::MovImm(RegisterTag::Ax, 42),
-                Op::MovImm(RegisterTag::Bx, 20),
-                Op::AddReg(RegisterTag::Ax, RegisterTag::Bx),
-                Op::Halt,
-            ],
-        );
-
-        let mut vm = Vm::new();
-
-        vm.run(program).expect("Invalid instruction");
-        let actual = vm.state();
-
-        assert_eq!(actual, expected);
     }
 }
