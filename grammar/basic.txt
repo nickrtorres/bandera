@@ -1,5 +1,7 @@
 <program>: <instr_list> halt
 
+<instr_list>: <label> <instr>
+<instr_list>: <label> <instr> <instr_list>
 <instr_list>: <instr> <instr_list>
 <instr_list>: <instr>
 

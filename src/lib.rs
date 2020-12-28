@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
+use std::fmt::Debug;
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -31,6 +32,13 @@ impl Token {
         match self {
             Self::Iden(i) => i,
             c => panic!("{:?} -- not an identifier", c),
+        }
+    }
+
+    fn into_label_unchecked(self) -> String {
+        match self {
+            Self::Label(s) => s,
+            c => panic!("{:?} -- not a label", c),
         }
     }
 }
@@ -113,14 +121,14 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
 type SymbolTable = HashMap<String, usize>;
 pub struct Program(SymbolTable, Vec<Op>);
 
-pub struct Parser<I: Iterator<Item = Token>> {
+pub struct Parser<I: Iterator<Item = Token> + Debug> {
     tokens: Peekable<I>,
     symbol_table: SymbolTable,
     pending_symbol: Option<String>,
     ops: Vec<Op>,
 }
 
-impl<I: Iterator<Item = Token>> Parser<I> {
+impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     pub fn new(tokens: Peekable<I>) -> Self {
         Parser {
             tokens,
@@ -175,13 +183,13 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn instr(&mut self) {
+        if let Some(label) = self.pending_symbol.take() {
+            self.symbol_table.insert(label, self.ops.len());
+        }
+
         match self.tokens.next() {
             Some(Token::Mov) => self.mov(),
             Some(Token::Add) => self.add(),
-            Some(Token::Label(s)) => {
-                assert!(self.pending_symbol.is_none());
-                self.pending_symbol = Some(s);
-            }
             Some(Token::Cmp) => self.cmp(),
             Some(token) => {
                 let next = self.tokens.next().unwrap();
@@ -191,13 +199,25 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
-    fn instr_list(&mut self) {
-        while self.tokens.peek().is_some() {
-            if let Some(label) = self.pending_symbol.take() {
-                self.symbol_table.insert(label, self.ops.len());
-            }
+    // TODO clean this up
+    fn label(&mut self) {
+        let iden = self.tokens.next().unwrap().into_label_unchecked();
+        assert!(self.pending_symbol.is_none());
+        self.pending_symbol = Some(iden);
+    }
 
-            self.instr();
+    fn instr_list(&mut self) {
+        match self.tokens.peek() {
+            Some(Token::Label(_)) => {
+                self.label();
+                self.instr();
+                self.instr_list();
+            }
+            Some(_) => {
+                self.instr();
+                self.instr_list();
+            }
+            None => {}
         }
     }
 
