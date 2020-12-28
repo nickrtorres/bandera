@@ -1,11 +1,10 @@
 foo proc
-  mov ax, 100
+  mov ax, 42
   ret
 foo endp
 
-bar:
-  add ax, 42
-
-end bar
+main:
+  call foo
+end main
 
 ; Expect: ax := 42

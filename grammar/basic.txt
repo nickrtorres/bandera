@@ -5,7 +5,7 @@
 
 <end>        ::= end iden
 
-<procedure>  ::= iden proc <instr_list> iden endp
+<procedure>  ::= iden proc <instr_list> ret iden endp
 
 <instr_list> ::= <label> <instr>
 <instr_list> ::= <label> <instr> <instr_list>
@@ -13,6 +13,7 @@
 <instr_list> ::= <instr>
 
 <instr>      ::= <add>
+<instr>      ::= <call>
 <instr>      ::= <cmp>
 <instr>      ::= <jump>
 <instr>      ::= <mov>
@@ -20,6 +21,8 @@
 <add>        ::= add reg unsigned_imm
 <add>        ::= add reg signed_imm
 <add>        ::= add reg reg
+
+<call>       ::= call iden
 
 <cmp>        ::= cmp reg signed_imm
 <cmp>        ::= cmp reg unsigned_imm

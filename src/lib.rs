@@ -26,6 +26,8 @@ pub enum Token {
     Proc,
     Endp,
     End,
+    Call,
+    Ret,
 }
 
 impl Token {
@@ -127,6 +129,8 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         "jne" => tokens.push(Token::Jne),
                         "mov" => tokens.push(Token::Mov),
                         "proc" => tokens.push(Token::Proc),
+                        "ret" => tokens.push(Token::Ret),
+                        "call" => tokens.push(Token::Call),
                         _ => tokens.push(Token::Iden(scratch)),
                     }
                 }
@@ -194,6 +198,12 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         }
     }
 
+    fn call(&mut self) {
+        self.tokens.next().unwrap(); // consume CALL
+        let proc = self.tokens.next().unwrap().into_iden_unchecked();
+        self.ops.push(Op::Call(proc));
+    }
+
     fn jump(&mut self, j: Token, label: Token) {
         let label = label.into_iden_unchecked();
         match j {
@@ -222,6 +232,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         match self.tokens.peek() {
             Some(Token::Mov) => self.mov(),
             Some(Token::Add) => self.add(),
+            Some(Token::Call) => self.call(),
             Some(Token::Cmp) => self.cmp(),
             Some(Token::Jmp) | Some(Token::Jne) | Some(Token::Je) => {
                 let token = self.tokens.next().unwrap();
@@ -241,7 +252,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn instr_list(&mut self) {
         match self.tokens.peek() {
-            Some(Token::End) | Some(Token::Iden(_)) | None => {}
+            Some(Token::Ret) | Some(Token::End) | Some(Token::Iden(_)) | None => {}
             Some(token) => {
                 if let Token::Label(_) = token {
                     self.label();
@@ -263,8 +274,9 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
         self.instr_list();
 
+        self.expect(Token::Ret);
+        self.ops.push(Op::Ret);
         self.expect(Token::Iden(String::default()));
-
         let _endp = self.tokens.next().unwrap().is_endp();
     }
 
@@ -330,6 +342,8 @@ pub trait RegisterMachine {
     fn unconditional_jump(&mut self, label: &str);
     fn jump_not_equal(&mut self, label: &str);
     fn jump_equal(&mut self, label: &str);
+    fn ret(&mut self);
+    fn call(&mut self, proc: &str);
     fn halt(&mut self);
     // FIXME maybe this doesn't belong here ...
     fn register_from_tag(&mut self, tag: RegisterTag) -> &mut Register;
@@ -347,6 +361,7 @@ pub struct Vm {
     of: u8,
     ip: usize,
     symbol_table: SymbolTable,
+    stack: Vec<usize>,
     halt: bool,
 }
 
@@ -414,6 +429,15 @@ impl RegisterMachine for Vm {
         }
     }
 
+    fn ret(&mut self) {
+        self.ip = self.stack.pop().unwrap();
+    }
+
+    fn call(&mut self, proc: &str) {
+        self.stack.push(self.ip);
+        self.ip = *self.symbol_table.get(proc).unwrap();
+    }
+
     fn halt(&mut self) {
         self.halt = true;
     }
@@ -445,6 +469,7 @@ impl Vm {
             of: 0,
             ip: 0,
             symbol_table: HashMap::default(),
+            stack: Vec::default(),
             halt: false,
         }
     }
@@ -485,6 +510,8 @@ pub enum Op {
     Jmp(String),
     Je(String),
     Jne(String),
+    Ret,
+    Call(String),
     Halt, //< Implementation detail
 }
 
@@ -499,6 +526,8 @@ impl Op {
             Self::Jmp(label) => machine.unconditional_jump(label),
             Self::Jne(label) => machine.jump_not_equal(label),
             Self::Je(label) => machine.jump_equal(label),
+            Self::Ret => machine.ret(),
+            Self::Call(proc) => machine.call(proc),
             Self::Halt => machine.halt(),
         }
     }
