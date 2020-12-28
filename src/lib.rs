@@ -117,6 +117,7 @@ pub struct Parser<I: Iterator<Item = Token>> {
     tokens: Peekable<I>,
     symbol_table: SymbolTable,
     pending_symbol: Option<String>,
+    ops: Vec<Op>,
 }
 
 impl<I: Iterator<Item = Token>> Parser<I> {
@@ -125,62 +126,61 @@ impl<I: Iterator<Item = Token>> Parser<I> {
             tokens,
             symbol_table: SymbolTable::default(),
             pending_symbol: None,
+            ops: Vec::default(),
         }
     }
 
-    pub fn run(mut self) -> Program {
+    pub fn run(self) -> Program {
         self.program()
     }
 
-    fn mov(&mut self) -> Option<Op> {
+    fn mov(&mut self) {
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
         match self.tokens.next() {
-            Some(Token::Reg(src)) => Some(Op::MovReg(dst, src)),
-            Some(Token::SignedImm(src)) => Some(Op::MovImm(dst, src)),
-            Some(Token::UnsignedImm(src)) => Some(Op::MovImm(dst, src.try_into().unwrap())),
+            Some(Token::Reg(src)) => self.ops.push(Op::MovReg(dst, src)),
+            Some(Token::SignedImm(src)) => self.ops.push(Op::MovImm(dst, src)),
+            Some(Token::UnsignedImm(src)) => {
+                self.ops.push(Op::MovImm(dst, src.try_into().unwrap()))
+            }
             _ => panic!("invalid mov"),
         }
     }
 
-    fn add(&mut self) -> Option<Op> {
+    fn add(&mut self) {
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
         match self.tokens.next() {
-            Some(Token::Reg(src)) => Some(Op::AddReg(dst, src)),
-            Some(Token::UnsignedImm(src)) => Some(Op::AddImmUnsigned(dst, src)),
+            Some(Token::Reg(src)) => self.ops.push(Op::AddReg(dst, src)),
+            Some(Token::UnsignedImm(src)) => self.ops.push(Op::AddImmUnsigned(dst, src)),
             _ => panic!("invalid mov"),
         }
     }
 
-    fn jump(&mut self, j: Token, label: Token) -> Option<Op> {
+    fn jump(&mut self, j: Token, label: Token) {
         let label = label.into_iden_unchecked();
         match j {
-            Token::Jmp => Some(Op::Jmp(label)),
-            Token::Jne => Some(Op::Jne(label)),
-            Token::Je => Some(Op::Je(label)),
+            Token::Jmp => self.ops.push(Op::Jmp(label)),
+            Token::Jne => self.ops.push(Op::Jne(label)),
+            Token::Je => self.ops.push(Op::Je(label)),
             _ => panic!("expected jump not => {:?}", j),
         }
     }
 
-    fn cmp(&mut self) -> Option<Op> {
+    fn cmp(&mut self) {
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
         match self.tokens.next() {
-            Some(Token::SignedImm(src)) => Some(Op::CmpImm(dst, src)),
-            Some(Token::UnsignedImm(src)) => Some(Op::CmpImm(dst, src as i16)),
+            Some(Token::SignedImm(src)) => self.ops.push(Op::CmpImm(dst, src)),
+            Some(Token::UnsignedImm(src)) => self.ops.push(Op::CmpImm(dst, src as i16)),
             c => todo!("{}", format!("{:?}", c)),
         }
     }
 
-    fn instr(&mut self) -> Option<Op>
-    where
-        I: Iterator<Item = Token>,
-    {
+    fn instr(&mut self) {
         match self.tokens.next() {
             Some(Token::Mov) => self.mov(),
             Some(Token::Add) => self.add(),
             Some(Token::Label(s)) => {
                 assert!(self.pending_symbol.is_none());
                 self.pending_symbol = Some(s);
-                None
             }
             Some(Token::Cmp) => self.cmp(),
             Some(token) => {
@@ -191,25 +191,20 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         }
     }
 
-    fn instruction_list(&mut self) -> Vec<Op> {
-        let mut ops = Vec::default();
+    fn instr_list(&mut self) {
         while self.tokens.peek().is_some() {
             if let Some(label) = self.pending_symbol.take() {
-                self.symbol_table.insert(label, ops.len());
+                self.symbol_table.insert(label, self.ops.len());
             }
 
-            if let Some(op) = self.instr() {
-                ops.push(op);
-            }
+            self.instr();
         }
-
-        ops
     }
 
     fn program(mut self) -> Program {
-        let mut ops = self.instruction_list();
-        ops.push(Op::Halt);
-        Program(self.symbol_table, ops)
+        self.instr_list();
+        self.ops.push(Op::Halt);
+        Program(self.symbol_table, self.ops)
     }
 }
 
