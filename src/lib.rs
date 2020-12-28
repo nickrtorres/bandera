@@ -311,11 +311,11 @@ pub struct Register {
 }
 
 impl Register {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Register { value: 0 }
     }
 
-    fn update(&mut self, src: i16) {
+    pub fn update(&mut self, src: i16) {
         self.value = src;
     }
 
@@ -324,7 +324,7 @@ impl Register {
     }
 }
 
-pub trait RegisterMachine {
+pub trait AbstractMachine {
     fn update_reg(&mut self, dst: RegisterTag, src: RegisterTag);
     fn update_imm(&mut self, dst: RegisterTag, src: i16);
     fn compare_imm(&mut self, reg: RegisterTag, value: i16);
@@ -356,7 +356,7 @@ pub struct Vm {
     halt: bool,
 }
 
-impl RegisterMachine for Vm {
+impl AbstractMachine for Vm {
     fn update_reg(&mut self, dst: RegisterTag, src: RegisterTag) {
         let src = self.register_from_tag(src).value();
         let dst = self.register_from_tag(dst);
@@ -443,8 +443,8 @@ impl RegisterMachine for Vm {
 
 #[derive(Debug, PartialEq)]
 pub struct MachineState {
-    ax: Register,
-    bx: Register,
+    pub ax: Register,
+    pub bx: Register,
 }
 
 impl Vm {
@@ -465,18 +465,23 @@ impl Vm {
         }
     }
 
-    pub fn run(&mut self, program: Program) -> Result<(), Box<dyn Error>> {
+    pub fn run(&mut self, program: Program) -> Result<MachineState, Box<dyn Error>> {
         let Program(symbols, instructions) = program;
         self.symbol_table = symbols;
         self.ip = *self.symbol_table.get(ENTRY_POINT).unwrap();
 
         while !self.halt {
-            let op = instructions.get(self.ip).unwrap();
-            self.ip = self.ip + 1;
+            let op = instructions.get(self.ip()).unwrap();
             op.eval(self);
         }
 
-        Ok(())
+        Ok(self.state())
+    }
+
+    pub fn ip(&mut self) -> usize {
+        let instruction_pointer = self.ip;
+        self.ip = self.ip + 1;
+        instruction_pointer
     }
 
     pub fn dump(&self) {
@@ -507,7 +512,7 @@ pub enum Op {
 }
 
 impl Op {
-    pub fn eval<T: RegisterMachine>(&self, machine: &mut T) {
+    pub fn eval<T: AbstractMachine>(&self, machine: &mut T) {
         match self {
             Self::MovImm(dst, src) => machine.update_imm(*dst, *src),
             Self::MovReg(dst, src) => machine.update_reg(*dst, *src),

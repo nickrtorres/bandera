@@ -5,6 +5,7 @@ foo endp
 
 main:
   call foo
+  add ax, 100
 end main
 
-; Expect: ax := 42
+; Expect: ax := 142
