@@ -1,18 +1,25 @@
-<instr>: <mov>
-<instr>: <add>
-<instr>: <jmp>
-<instr>: <cmp>
+<program>: <instr_list> halt
 
-<mov>: mov reg unsigned_imm
-<mov>: mov reg signed_imm
-<mov>: mov reg reg
+<instr_list>: <instr> <instr_list>
+<instr_list>: <instr>
+
+<instr>: <add>
+<instr>: <cmp>
+<instr>: <jump>
+<instr>: <mov>
 
 <add>: add reg unsigned_imm
 <add>: add reg signed_imm
 <add>: add reg reg
 
-<jmp>: jmp iden
-
 <cmp>: cmp reg signed_imm
 <cmp>: cmp reg unsigned_imm
 <cmp>: cmp reg reg
+
+<jump>: jmp iden
+<jump>: jne iden
+<jump>: je iden
+
+<mov>: mov reg unsigned_imm
+<mov>: mov reg signed_imm
+<mov>: mov reg reg

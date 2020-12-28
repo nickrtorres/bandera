@@ -113,7 +113,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
 type SymbolTable = HashMap<String, usize>;
 pub struct Program(SymbolTable, Vec<Op>);
 
-pub fn parse<I>(mut tokens: Peekable<I>) -> Program
+pub fn parse<I>(tokens: Peekable<I>) -> Program
 where
     I: Iterator<Item = Token>,
 {
@@ -142,28 +142,14 @@ where
         }
     }
 
-    fn jmp<I>(stream: &mut Peekable<I>) -> Option<Op>
-    where
-        I: Iterator<Item = Token>,
-    {
-        let label = stream.next().unwrap().into_iden_unchecked();
-        Some(Op::Jmp(label))
-    }
-
-    fn jne<I>(stream: &mut Peekable<I>) -> Option<Op>
-    where
-        I: Iterator<Item = Token>,
-    {
-        let label = stream.next().unwrap().into_iden_unchecked();
-        Some(Op::Jne(label))
-    }
-
-    fn je<I>(stream: &mut Peekable<I>) -> Option<Op>
-    where
-        I: Iterator<Item = Token>,
-    {
-        let label = stream.next().unwrap().into_iden_unchecked();
-        Some(Op::Je(label))
+    fn jump(j: Token, label: Token) -> Option<Op> {
+        let label = label.into_iden_unchecked();
+        match j {
+            Token::Jmp => Some(Op::Jmp(label)),
+            Token::Jne => Some(Op::Jne(label)),
+            Token::Je => Some(Op::Je(label)),
+            _ => panic!("expected jump not => {:?}", j),
+        }
     }
 
     fn cmp<I>(stream: &mut Peekable<I>) -> Option<Op>
@@ -189,31 +175,44 @@ where
                 label_stack.push(s);
                 None
             }
-            Some(Token::Jmp) => jmp(stream),
-            Some(Token::Jne) => jne(stream),
-            Some(Token::Je) => je(stream),
             Some(Token::Cmp) => cmp(stream),
-            c => panic!(format!("uh-oh! -- {:?}", c)),
+            Some(token) => jump(token, stream.next().unwrap()),
+            _ => todo!(),
         }
     }
 
-    let mut ops = Vec::default();
-    let mut symbol_table: SymbolTable = HashMap::new();
-    let mut label_stack = Vec::default();
+    fn instruction_list<I>(mut tokens: Peekable<I>, symbol_table: &mut SymbolTable) -> Vec<Op>
+    where
+        I: Iterator<Item = Token>,
+    {
+        let mut ops = Vec::default();
+        let mut label_stack = Vec::default();
 
-    while tokens.peek().is_some() {
-        if let Some(label) = label_stack.pop() {
-            symbol_table.insert(label, ops.len());
-            assert_eq!(label_stack.len(), 0);
+        while tokens.peek().is_some() {
+            if let Some(label) = label_stack.pop() {
+                symbol_table.insert(label, ops.len());
+                assert_eq!(label_stack.len(), 0);
+            }
+
+            if let Some(op) = instr(&mut tokens, &mut label_stack) {
+                ops.push(op);
+            }
         }
 
-        if let Some(op) = instr(&mut tokens, &mut label_stack) {
-            ops.push(op);
-        }
+        ops
     }
 
-    ops.push(Op::Halt);
-    Program(symbol_table, ops)
+    fn program<I>(tokens: Peekable<I>) -> Program
+    where
+        I: Iterator<Item = Token>,
+    {
+        let mut symbol_table = SymbolTable::default();
+        let mut ops = instruction_list(tokens, &mut symbol_table);
+        ops.push(Op::Halt);
+        Program(symbol_table, ops)
+    }
+
+    program(tokens)
 }
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -390,9 +389,7 @@ impl Vm {
     }
 
     pub fn dump(&self) {
-        eprintln!("\n*******************************************");
         eprintln!("{:?}", self.state());
-        eprintln!("*******************************************\n");
     }
 
     pub fn state(&self) -> MachineState {
