@@ -13,21 +13,21 @@ const ENTRY_POINT: &str = "END";
 #[derive(PartialEq, Debug)]
 pub enum Token {
     Add,
+    Call,
     Cmp,
+    End,
+    Endp,
     Iden(String),
+    Je,
     Jmp,
     Jne,
-    Je,
     Label(String),
     Mov,
+    Proc,
     Reg(RegisterTag),
+    Ret,
     SignedImm(i16),
     UnsignedImm(u16),
-    Proc,
-    Endp,
-    End,
-    Call,
-    Ret,
 }
 
 impl Token {
@@ -49,14 +49,6 @@ impl Token {
         match self {
             Self::Label(s) => s,
             c => panic!("{:?} -- not a label", c),
-        }
-    }
-
-    fn is_endp(&self) -> bool {
-        if let Token::Endp = self {
-            true
-        } else {
-            false
         }
     }
 }
@@ -121,16 +113,16 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         "ax" => tokens.push(Token::Reg(RegisterTag::Ax)),
                         "bx" => tokens.push(Token::Reg(RegisterTag::Bx)),
                         "add" => tokens.push(Token::Add),
+                        "call" => tokens.push(Token::Call),
                         "cmp" => tokens.push(Token::Cmp),
-                        "endp" => tokens.push(Token::Endp),
                         "end" => tokens.push(Token::End),
+                        "endp" => tokens.push(Token::Endp),
                         "je" => tokens.push(Token::Je),
                         "jmp" => tokens.push(Token::Jmp),
                         "jne" => tokens.push(Token::Jne),
                         "mov" => tokens.push(Token::Mov),
                         "proc" => tokens.push(Token::Proc),
                         "ret" => tokens.push(Token::Ret),
-                        "call" => tokens.push(Token::Call),
                         _ => tokens.push(Token::Iden(scratch)),
                     }
                 }
@@ -276,18 +268,17 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
         self.expect(Token::Ret);
         self.ops.push(Op::Ret);
+
         self.expect(Token::Iden(String::default()));
-        let _endp = self.tokens.next().unwrap().is_endp();
+        self.expect(Token::Endp);
     }
 
     fn stmt_list(&mut self) {
-        match self.tokens.peek() {
-            Some(Token::Iden(_)) => {
-                self.procedure();
-                self.instr_list();
-            }
-            _ => self.instr_list(),
+        if let Some(Token::Iden(_)) = self.tokens.peek() {
+            self.procedure();
         }
+
+        self.instr_list();
     }
 
     fn end(&mut self) {
