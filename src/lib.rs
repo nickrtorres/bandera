@@ -351,8 +351,11 @@ pub struct Vm {
     pf: u8,
     of: u8,
     ip: usize,
+    sp: Option<usize>,
+    bp: usize,
     symbol_table: SymbolTable,
     stack: Vec<usize>,
+    stack_limit: usize,
     halt: bool,
 }
 
@@ -421,11 +424,11 @@ impl AbstractMachine for Vm {
     }
 
     fn ret(&mut self) {
-        self.ip = self.stack.pop().unwrap();
+        self.ip = self.pop();
     }
 
     fn call(&mut self, proc: &str) {
-        self.stack.push(self.ip);
+        self.push(self.ip);
         self.ip = *self.symbol_table.get(proc).unwrap();
     }
 
@@ -459,8 +462,11 @@ impl Vm {
             pf: 0,
             of: 0,
             ip: 0,
+            sp: None,
+            bp: 0,
             symbol_table: HashMap::default(),
-            stack: Vec::default(),
+            stack: vec![0; 1024],
+            stack_limit: 1024,
             halt: false,
         }
     }
@@ -493,6 +499,39 @@ impl Vm {
             ax: self.ax,
             bx: self.bx,
         }
+    }
+
+    fn push(&mut self, value: usize) {
+        let limit = self.stack_limit - 1;
+        let sp = match self.sp {
+            Some(l) if l == limit => panic!("stack overflow!"),
+            Some(sp) => {
+                self.sp = Some(sp + 1);
+                sp
+            }
+            None => {
+                self.sp = Some(0);
+                0
+            }
+        };
+
+        self.stack[sp] = value;
+    }
+
+    fn pop(&mut self) -> usize {
+        let top = match self.sp {
+            Some(0) => {
+                self.sp = None;
+                0
+            }
+            Some(s) => {
+                self.sp = Some(s - 1);
+                s
+            }
+            None => panic!("stack is already empty!"),
+        };
+
+        self.stack[top]
     }
 }
 
