@@ -1,27 +1,27 @@
-<program>: <instr_list> halt
+<program>    ::= <instr_list> halt
 
-<instr_list>: <label> <instr>
-<instr_list>: <label> <instr> <instr_list>
-<instr_list>: <instr> <instr_list>
-<instr_list>: <instr>
+<instr_list> ::= <label> <instr>
+<instr_list> ::= <label> <instr> <instr_list>
+<instr_list> ::= <instr> <instr_list>
+<instr_list> ::= <instr>
 
-<instr>: <add>
-<instr>: <cmp>
-<instr>: <jump>
-<instr>: <mov>
+<instr>      ::= <add>
+<instr>      ::= <cmp>
+<instr>      ::= <jump>
+<instr>      ::= <mov>
 
-<add>: add reg unsigned_imm
-<add>: add reg signed_imm
-<add>: add reg reg
+<add>        ::= add reg unsigned_imm
+<add>        ::= add reg signed_imm
+<add>        ::= add reg reg
 
-<cmp>: cmp reg signed_imm
-<cmp>: cmp reg unsigned_imm
-<cmp>: cmp reg reg
+<cmp>        ::= cmp reg signed_imm
+<cmp>        ::= cmp reg unsigned_imm
+<cmp>        ::= cmp reg reg
 
-<jump>: jmp iden
-<jump>: jne iden
-<jump>: je iden
+<jump>       ::= jmp iden
+<jump>       ::= jne iden
+<jump>       ::= je iden
 
-<mov>: mov reg unsigned_imm
-<mov>: mov reg signed_imm
-<mov>: mov reg reg
+<mov>        ::= mov reg unsigned_imm
+<mov>        ::= mov reg signed_imm
+<mov>        ::= mov reg reg
