@@ -113,16 +113,28 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
 type SymbolTable = HashMap<String, usize>;
 pub struct Program(SymbolTable, Vec<Op>);
 
-pub fn parse<I>(tokens: Peekable<I>) -> Program
-where
-    I: Iterator<Item = Token>,
-{
-    fn mov<I>(stream: &mut Peekable<I>) -> Option<Op>
-    where
-        I: Iterator<Item = Token>,
-    {
-        let dst = stream.next().unwrap().into_reg_unchecked();
-        match stream.next() {
+pub struct Parser<I: Iterator<Item = Token>> {
+    tokens: Peekable<I>,
+    symbol_table: SymbolTable,
+    pending_symbol: Option<String>,
+}
+
+impl<I: Iterator<Item = Token>> Parser<I> {
+    pub fn new(tokens: Peekable<I>) -> Self {
+        Parser {
+            tokens,
+            symbol_table: SymbolTable::default(),
+            pending_symbol: None,
+        }
+    }
+
+    pub fn run(mut self) -> Program {
+        self.program()
+    }
+
+    fn mov(&mut self) -> Option<Op> {
+        let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        match self.tokens.next() {
             Some(Token::Reg(src)) => Some(Op::MovReg(dst, src)),
             Some(Token::SignedImm(src)) => Some(Op::MovImm(dst, src)),
             Some(Token::UnsignedImm(src)) => Some(Op::MovImm(dst, src.try_into().unwrap())),
@@ -130,19 +142,16 @@ where
         }
     }
 
-    fn add<I>(stream: &mut Peekable<I>) -> Option<Op>
-    where
-        I: Iterator<Item = Token>,
-    {
-        let dst = stream.next().unwrap().into_reg_unchecked();
-        match stream.next() {
+    fn add(&mut self) -> Option<Op> {
+        let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        match self.tokens.next() {
             Some(Token::Reg(src)) => Some(Op::AddReg(dst, src)),
             Some(Token::UnsignedImm(src)) => Some(Op::AddImmUnsigned(dst, src)),
             _ => panic!("invalid mov"),
         }
     }
 
-    fn jump(j: Token, label: Token) -> Option<Op> {
+    fn jump(&mut self, j: Token, label: Token) -> Option<Op> {
         let label = label.into_iden_unchecked();
         match j {
             Token::Jmp => Some(Op::Jmp(label)),
@@ -152,49 +161,44 @@ where
         }
     }
 
-    fn cmp<I>(stream: &mut Peekable<I>) -> Option<Op>
-    where
-        I: Iterator<Item = Token>,
-    {
-        let dst = stream.next().unwrap().into_reg_unchecked();
-        match stream.next() {
+    fn cmp(&mut self) -> Option<Op> {
+        let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        match self.tokens.next() {
             Some(Token::SignedImm(src)) => Some(Op::CmpImm(dst, src)),
             Some(Token::UnsignedImm(src)) => Some(Op::CmpImm(dst, src as i16)),
             c => todo!("{}", format!("{:?}", c)),
         }
     }
 
-    fn instr<I>(stream: &mut Peekable<I>, label_stack: &mut Vec<String>) -> Option<Op>
+    fn instr(&mut self) -> Option<Op>
     where
         I: Iterator<Item = Token>,
     {
-        match stream.next() {
-            Some(Token::Mov) => mov(stream),
-            Some(Token::Add) => add(stream),
+        match self.tokens.next() {
+            Some(Token::Mov) => self.mov(),
+            Some(Token::Add) => self.add(),
             Some(Token::Label(s)) => {
-                label_stack.push(s);
+                assert!(self.pending_symbol.is_none());
+                self.pending_symbol = Some(s);
                 None
             }
-            Some(Token::Cmp) => cmp(stream),
-            Some(token) => jump(token, stream.next().unwrap()),
+            Some(Token::Cmp) => self.cmp(),
+            Some(token) => {
+                let next = self.tokens.next().unwrap();
+                self.jump(token, next)
+            }
             _ => todo!(),
         }
     }
 
-    fn instruction_list<I>(mut tokens: Peekable<I>, symbol_table: &mut SymbolTable) -> Vec<Op>
-    where
-        I: Iterator<Item = Token>,
-    {
+    fn instruction_list(&mut self) -> Vec<Op> {
         let mut ops = Vec::default();
-        let mut label_stack = Vec::default();
-
-        while tokens.peek().is_some() {
-            if let Some(label) = label_stack.pop() {
-                symbol_table.insert(label, ops.len());
-                assert_eq!(label_stack.len(), 0);
+        while self.tokens.peek().is_some() {
+            if let Some(label) = self.pending_symbol.take() {
+                self.symbol_table.insert(label, ops.len());
             }
 
-            if let Some(op) = instr(&mut tokens, &mut label_stack) {
+            if let Some(op) = self.instr() {
                 ops.push(op);
             }
         }
@@ -202,17 +206,11 @@ where
         ops
     }
 
-    fn program<I>(tokens: Peekable<I>) -> Program
-    where
-        I: Iterator<Item = Token>,
-    {
-        let mut symbol_table = SymbolTable::default();
-        let mut ops = instruction_list(tokens, &mut symbol_table);
+    fn program(mut self) -> Program {
+        let mut ops = self.instruction_list();
         ops.push(Op::Halt);
-        Program(symbol_table, ops)
+        Program(self.symbol_table, ops)
     }
-
-    program(tokens)
 }
 
 #[derive(PartialEq, Debug, Copy, Clone)]
@@ -454,7 +452,10 @@ mod tests {
     #[test]
     fn simple_parse() {
         let tokens = lex("mov ax, 42".chars().peekable()).into_iter();
-        let mut ops = parse(tokens.into_iter().peekable()).1.into_iter();
+        let mut ops = Parser::new(tokens.into_iter().peekable())
+            .run()
+            .1
+            .into_iter();
         assert_eq!(Some(Op::MovImm(RegisterTag::Ax, 42)), ops.next());
         assert_eq!(Some(Op::Halt), ops.next());
         assert_eq!(None, ops.next());
@@ -471,7 +472,7 @@ mod tests {
             Token::Reg(RegisterTag::Ax),
             Token::Reg(RegisterTag::Ax),
         ];
-        let Program(symbols, _) = parse(tokens.into_iter().peekable());
+        let Program(symbols, _) = Parser::new(tokens.into_iter().peekable()).run();
         assert_eq!(symbols.get("Foo"), Some(&(1 as usize)));
     }
 
