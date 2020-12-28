@@ -77,6 +77,18 @@ fn simple_loop() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn loop_with_call() -> Result<(), Box<dyn Error>> {
+    let actual = run("loop_with_call.asm")?;
+    let expected = MachineState {
+        ax: register_from(32000),
+        bx: register_from(0),
+    };
+
+    assert_eq!(actual, expected);
+    Ok(())
+}
+
+#[test]
 fn simple_procedure() -> Result<(), Box<dyn Error>> {
     let actual = run("simple_procedure.asm")?;
     let expected = MachineState {
