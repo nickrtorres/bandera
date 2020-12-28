@@ -485,7 +485,10 @@ mod tests {
             bx: Register::with_value(0),
         };
 
-        let program = Program(HashMap::default(), vec![Op::MovImm(RegisterTag::Ax, 42)]);
+        let program = Program(
+            HashMap::default(),
+            vec![Op::MovImm(RegisterTag::Ax, 42), Op::Halt],
+        );
 
         let mut vm = Vm::new();
         vm.run(program).expect("Invalid instruction");
@@ -498,7 +501,7 @@ mod tests {
     fn mov_reg() {
         let expected = MachineState {
             ax: Register::with_value(42),
-            bx: Register::with_value(0),
+            bx: Register::with_value(42),
         };
 
         let program = Program(
@@ -506,6 +509,7 @@ mod tests {
             vec![
                 Op::MovImm(RegisterTag::Ax, 42),
                 Op::MovReg(RegisterTag::Bx, RegisterTag::Ax),
+                Op::Halt,
             ],
         );
 
@@ -529,6 +533,7 @@ mod tests {
             vec![
                 Op::MovImm(RegisterTag::Ax, 42),
                 Op::AddImmUnsigned(RegisterTag::Ax, 100),
+                Op::Halt,
             ],
         );
 
@@ -544,7 +549,7 @@ mod tests {
     fn add_reg() {
         let expected = MachineState {
             ax: Register::with_value(62),
-            bx: Register::with_value(0),
+            bx: Register::with_value(20),
         };
 
         let program = Program(
@@ -553,6 +558,7 @@ mod tests {
                 Op::MovImm(RegisterTag::Ax, 42),
                 Op::MovImm(RegisterTag::Bx, 20),
                 Op::AddReg(RegisterTag::Ax, RegisterTag::Bx),
+                Op::Halt,
             ],
         );
 
