@@ -20,14 +20,14 @@ pub enum Token {
 }
 
 impl Token {
-    fn unwrap_reg(self) -> RegisterTag {
+    fn into_reg_unchecked(self) -> RegisterTag {
         match self {
             Self::Reg(r) => r,
             _ => panic!("not a register!"),
         }
     }
 
-    fn unwrap_iden(self) -> String {
+    fn into_iden_unchecked(self) -> String {
         match self {
             Self::Iden(i) => i,
             c => panic!("{:?} -- not an identifier", c),
@@ -121,7 +121,7 @@ where
     where
         I: Iterator<Item = Token>,
     {
-        let dst = stream.next().unwrap().unwrap_reg();
+        let dst = stream.next().unwrap().into_reg_unchecked();
         match stream.next() {
             Some(Token::Reg(src)) => Some(Op::MovReg(dst, src)),
             Some(Token::SignedImm(src)) => Some(Op::MovImm(dst, src)),
@@ -134,7 +134,7 @@ where
     where
         I: Iterator<Item = Token>,
     {
-        let dst = stream.next().unwrap().unwrap_reg();
+        let dst = stream.next().unwrap().into_reg_unchecked();
         match stream.next() {
             Some(Token::Reg(src)) => Some(Op::AddReg(dst, src)),
             Some(Token::UnsignedImm(src)) => Some(Op::AddImmUnsigned(dst, src)),
@@ -146,7 +146,7 @@ where
     where
         I: Iterator<Item = Token>,
     {
-        let label = stream.next().unwrap().unwrap_iden();
+        let label = stream.next().unwrap().into_iden_unchecked();
         Some(Op::Jmp(label))
     }
 
@@ -154,7 +154,7 @@ where
     where
         I: Iterator<Item = Token>,
     {
-        let label = stream.next().unwrap().unwrap_iden();
+        let label = stream.next().unwrap().into_iden_unchecked();
         Some(Op::Jne(label))
     }
 
@@ -162,7 +162,7 @@ where
     where
         I: Iterator<Item = Token>,
     {
-        let label = stream.next().unwrap().unwrap_iden();
+        let label = stream.next().unwrap().into_iden_unchecked();
         Some(Op::Je(label))
     }
 
@@ -170,7 +170,7 @@ where
     where
         I: Iterator<Item = Token>,
     {
-        let dst = stream.next().unwrap().unwrap_reg();
+        let dst = stream.next().unwrap().into_reg_unchecked();
         match stream.next() {
             Some(Token::SignedImm(src)) => Some(Op::CmpImm(dst, src)),
             Some(Token::UnsignedImm(src)) => Some(Op::CmpImm(dst, src as i16)),
@@ -223,7 +223,7 @@ pub enum RegisterTag {
 }
 
 // TODO: add register tag
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Copy, Clone)]
 pub struct Register {
     // TODO: A _register_ can really be 8 or 16 bit (i.e. a 16 bit register can
     // split into two 8-bit registers).
@@ -233,6 +233,10 @@ pub struct Register {
 impl Register {
     fn new() -> Self {
         Register { value: 0 }
+    }
+
+    fn with_value(value: i16) -> Self {
+        Register { value }
     }
 
     fn update(&mut self, src: i16) {
@@ -349,6 +353,12 @@ impl RegisterMachine for Vm {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct MachineState {
+    ax: Register,
+    bx: Register,
+}
+
 impl Vm {
     pub fn new() -> Self {
         Vm {
@@ -379,25 +389,17 @@ impl Vm {
         Ok(())
     }
 
-    pub fn ax(&self) -> i16 {
-        self.ax.value()
-    }
-
-    pub fn bx(&self) -> i16 {
-        self.bx.value()
-    }
-
     pub fn dump(&self) {
         eprintln!("\n*******************************************");
-        eprintln!("ax => [{:?}]", self.ax);
-        eprintln!("bx => [{:?}]", self.bx);
-        eprintln!("cf => [{:?}]", self.cf);
-        eprintln!("af => [{:?}]", self.af);
-        eprintln!("sf => [{:?}]", self.sf);
-        eprintln!("zf => [{:?}]", self.zf);
-        eprintln!("pf => [{:?}]", self.pf);
-        eprintln!("of => [{:?}]", self.of);
+        eprintln!("{:?}", self.state());
         eprintln!("*******************************************\n");
+    }
+
+    pub fn state(&self) -> MachineState {
+        MachineState {
+            ax: self.ax,
+            bx: self.bx,
+        }
     }
 }
 
@@ -457,6 +459,7 @@ mod tests {
         let tokens = lex("mov ax, 42".chars().peekable()).into_iter();
         let mut ops = parse(tokens.into_iter().peekable()).1.into_iter();
         assert_eq!(Some(Op::MovImm(RegisterTag::Ax, 42)), ops.next());
+        assert_eq!(Some(Op::Halt), ops.next());
         assert_eq!(None, ops.next());
     }
 
@@ -477,17 +480,27 @@ mod tests {
 
     #[test]
     fn mov_imm() {
+        let expected = MachineState {
+            ax: Register::with_value(42),
+            bx: Register::with_value(0),
+        };
+
         let program = Program(HashMap::default(), vec![Op::MovImm(RegisterTag::Ax, 42)]);
 
         let mut vm = Vm::new();
         vm.run(program).expect("Invalid instruction");
+        let actual = vm.state();
 
-        assert_eq!(vm.ax(), 42);
-        assert_eq!(vm.bx(), 0);
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn mov_reg() {
+        let expected = MachineState {
+            ax: Register::with_value(42),
+            bx: Register::with_value(0),
+        };
+
         let program = Program(
             HashMap::default(),
             vec![
@@ -499,13 +512,18 @@ mod tests {
         let mut vm = Vm::new();
 
         vm.run(program).expect("Invalid instruction");
+        let actual = vm.state();
 
-        assert_eq!(vm.ax(), 42);
-        assert_eq!(vm.bx(), 42);
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn add_imm() {
+        let expected = MachineState {
+            ax: Register::with_value(142),
+            bx: Register::with_value(0),
+        };
+
         let program = Program(
             HashMap::default(),
             vec![
@@ -517,12 +535,18 @@ mod tests {
         let mut vm = Vm::new();
 
         vm.run(program).expect("Invalid instruction");
+        let actual = vm.state();
 
-        assert_eq!(vm.ax(), 142);
+        assert_eq!(actual, expected);
     }
 
     #[test]
     fn add_reg() {
+        let expected = MachineState {
+            ax: Register::with_value(62),
+            bx: Register::with_value(0),
+        };
+
         let program = Program(
             HashMap::default(),
             vec![
@@ -535,7 +559,8 @@ mod tests {
         let mut vm = Vm::new();
 
         vm.run(program).expect("Invalid instruction");
+        let actual = vm.state();
 
-        assert_eq!(vm.ax(), 62);
+        assert_eq!(actual, expected);
     }
 }
