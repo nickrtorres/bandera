@@ -22,7 +22,7 @@ fn run(name: &str) -> Result<MachineState, Box<dyn Error>> {
     Vm::new().run(program)
 }
 
-fn register_from(value: i16) -> Register {
+fn register_from(value: u16) -> Register {
     let mut reg = Register::new();
     reg.update(value);
     reg

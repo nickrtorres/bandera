@@ -171,7 +171,6 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::MovReg(dst, src)),
-            Some(Token::SignedImm(src)) => self.ops.push(Op::MovImm(dst, src)),
             Some(Token::UnsignedImm(src)) => {
                 self.ops.push(Op::MovImm(dst, src.try_into().unwrap()))
             }
@@ -209,8 +208,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.tokens.next().unwrap(); // consume CMP
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
         match self.tokens.next() {
-            Some(Token::SignedImm(src)) => self.ops.push(Op::CmpImm(dst, src)),
-            Some(Token::UnsignedImm(src)) => self.ops.push(Op::CmpImm(dst, src as i16)),
+            Some(Token::UnsignedImm(src)) => self.ops.push(Op::CmpImm(dst, src as u16)),
             c => todo!("{}", format!("{:?}", c)),
         }
     }
@@ -307,7 +305,7 @@ pub enum RegisterTag {
 pub struct Register {
     // TODO: A _register_ can really be 8 or 16 bit (i.e. a 16 bit register can
     // split into two 8-bit registers).
-    value: i16,
+    value: u16,
 }
 
 impl Register {
@@ -315,19 +313,19 @@ impl Register {
         Register { value: 0 }
     }
 
-    pub fn update(&mut self, src: i16) {
+    pub fn update(&mut self, src: u16) {
         self.value = src;
     }
 
-    fn value(&self) -> i16 {
+    fn value(&self) -> u16 {
         self.value
     }
 }
 
 pub trait AbstractMachine {
     fn update_reg(&mut self, dst: RegisterTag, src: RegisterTag);
-    fn update_imm(&mut self, dst: RegisterTag, src: i16);
-    fn compare_imm(&mut self, reg: RegisterTag, value: i16);
+    fn update_imm(&mut self, dst: RegisterTag, src: u16);
+    fn compare_imm(&mut self, reg: RegisterTag, value: u16);
     fn add_imm_unsigned(&mut self, reg: RegisterTag, value: u16);
     fn add_reg_unsigned(&mut self, dst: RegisterTag, src: RegisterTag);
     fn unconditional_jump(&mut self, label: &str);
@@ -369,16 +367,17 @@ impl AbstractMachine for Vm {
         dst.update(src);
     }
 
-    fn update_imm(&mut self, dst: RegisterTag, src: i16) {
+    fn update_imm(&mut self, dst: RegisterTag, src: u16) {
         let dst = self.register_from_tag(dst);
         dst.update(src);
     }
 
     // Updates AF, CF, OF, PF, SF, and ZF
-    fn compare_imm(&mut self, dst: RegisterTag, src: i16) {
+    fn compare_imm(&mut self, dst: RegisterTag, src: u16) {
         let dst = self.register_from_tag(dst).value();
 
-        let r = dst - src;
+        // hmmmmmmmmmmmmmmm
+        let r = (dst as i16) - (src as i16);
 
         // TODO
         // > If a subtraction results in a borrow into the high-order bit of
@@ -397,7 +396,7 @@ impl AbstractMachine for Vm {
     fn add_imm_unsigned(&mut self, dst: RegisterTag, src: u16) {
         // TODO set flags
         let dst = self.register_from_tag(dst);
-        dst.update(dst.value() + src as i16);
+        dst.update(dst.value() + src as u16);
     }
 
     fn add_reg_unsigned(&mut self, dst: RegisterTag, src: RegisterTag) {
@@ -544,9 +543,9 @@ impl Vm {
 
 #[derive(PartialEq, Debug)]
 pub enum Op {
-    MovImm(RegisterTag, i16),
+    MovImm(RegisterTag, u16),
     MovReg(RegisterTag, RegisterTag),
-    CmpImm(RegisterTag, i16),
+    CmpImm(RegisterTag, u16),
     AddImmUnsigned(RegisterTag, u16),
     AddReg(RegisterTag, RegisterTag),
     Jmp(String),
