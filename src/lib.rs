@@ -8,6 +8,7 @@ use std::str::Chars;
 
 // Ironically, the entry point to an assembler program is the symbol marked 'END'
 const ENTRY_POINT: &str = "END";
+const STACK_SIZE: u16 = 20;
 
 #[derive(PartialEq, Debug)]
 pub enum Token {
@@ -21,19 +22,26 @@ pub enum Token {
     Jmp,
     Jne,
     Label(String),
+    LeftBracket,
+    Minus,
     Mov,
+    Plus,
     Proc,
+    Ptr,
+    Push,
     Reg(RegisterTag),
     Ret,
+    RightBracket,
     SignedImm(i16),
     UnsignedImm(u16),
+    Word,
 }
 
 impl Token {
     fn into_reg_unchecked(self) -> RegisterTag {
         match self {
             Self::Reg(r) => r,
-            _ => panic!("not a register!"),
+            c => panic!("{:?} -- not a register!", c),
         }
     }
 
@@ -50,6 +58,13 @@ impl Token {
             c => panic!("{:?} -- not a label", c),
         }
     }
+
+    fn into_unsigned_imm_unchecked(self) -> u16 {
+        match self {
+            Self::UnsignedImm(s) => s,
+            c => panic!("{:?} -- not an unsigned immediate", c),
+        }
+    }
 }
 
 pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
@@ -57,6 +72,9 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
     while let Some(c) = stream.next() {
         match c {
             '\n' | ',' | ' ' => {}
+            '+' => tokens.push(Token::Plus),
+            '[' => tokens.push(Token::LeftBracket),
+            ']' => tokens.push(Token::RightBracket),
             ';' => {
                 while let Some(c) = stream.next() {
                     if c == '\n' {
@@ -67,6 +85,11 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                 continue;
             }
             '-' => {
+                if let Some(' ') = stream.peek() {
+                    tokens.push(Token::Minus);
+                    continue;
+                }
+
                 let mut buffer = String::from('-');
                 while let Some(d) = stream.peek() {
                     if d.is_ascii_digit() {
@@ -111,6 +134,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                     match scratch.as_str() {
                         "ax" => tokens.push(Token::Reg(RegisterTag::Ax)),
                         "bx" => tokens.push(Token::Reg(RegisterTag::Bx)),
+                        "bp" => tokens.push(Token::Reg(RegisterTag::Bp)),
                         "add" => tokens.push(Token::Add),
                         "call" => tokens.push(Token::Call),
                         "cmp" => tokens.push(Token::Cmp),
@@ -121,7 +145,10 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         "jne" => tokens.push(Token::Jne),
                         "mov" => tokens.push(Token::Mov),
                         "proc" => tokens.push(Token::Proc),
+                        "ptr" => tokens.push(Token::Ptr),
+                        "push" => tokens.push(Token::Push),
                         "ret" => tokens.push(Token::Ret),
+                        "word" => tokens.push(Token::Word),
                         _ => tokens.push(Token::Iden(scratch)),
                     }
                 }
@@ -169,10 +196,35 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     fn mov(&mut self) {
         self.tokens.next().unwrap(); // consume MOV
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
+
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::MovReg(dst, src)),
             Some(Token::UnsignedImm(src)) => {
                 self.ops.push(Op::MovImm(dst, src.try_into().unwrap()))
+            }
+            Some(Token::Word) => {
+                self.expect(Token::Ptr);
+                self.expect(Token::LeftBracket);
+
+                let src = self.tokens.next().unwrap().into_reg_unchecked();
+                let offset = match self.tokens.peek() {
+                    Some(Token::Plus) => {
+                        self.expect(Token::Plus);
+                        let offset = self.tokens.next().unwrap().into_unsigned_imm_unchecked();
+                        assert_eq!(0, offset % 2);
+                        Some((OffsetOp::Add, offset / 2))
+                    }
+                    Some(Token::Minus) => {
+                        self.expect(Token::Minus);
+                        let offset = self.tokens.next().unwrap().into_unsigned_imm_unchecked();
+                        assert_eq!(0, offset % 2);
+                        Some((OffsetOp::Subtract, offset / 2))
+                    }
+                    _ => None,
+                };
+
+                self.expect(Token::RightBracket);
+                self.ops.push(Op::MovMem(dst, src, offset))
             }
             _ => panic!("invalid mov"),
         }
@@ -213,6 +265,12 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         }
     }
 
+    fn push(&mut self) {
+        self.tokens.next().unwrap(); // consume PUSH
+        let src = self.tokens.next().unwrap().into_reg_unchecked();
+        self.ops.push(Op::Push(src));
+    }
+
     fn instr(&mut self) {
         if let Some(label) = self.pending_symbol.take() {
             self.symbol_table
@@ -224,6 +282,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
             Some(Token::Add) => self.add(),
             Some(Token::Call) => self.call(),
             Some(Token::Cmp) => self.cmp(),
+            Some(Token::Push) => self.push(),
             Some(Token::Jmp) | Some(Token::Jne) | Some(Token::Je) => {
                 let token = self.tokens.next().unwrap();
                 let next = self.tokens.next().unwrap();
@@ -242,7 +301,13 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn instr_list(&mut self) {
         match self.tokens.peek() {
-            Some(Token::Ret) | Some(Token::End) | Some(Token::Iden(_)) | None => {}
+            Some(Token::Ret) => {
+                if let Some(label) = self.pending_symbol.take() {
+                    self.symbol_table
+                        .insert(label, self.ops.len().try_into().unwrap());
+                }
+            }
+            Some(Token::End) | Some(Token::Iden(_)) | None => {}
             Some(token) => {
                 if let Token::Label(_) = token {
                     self.label();
@@ -265,8 +330,17 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.instr_list();
 
         self.expect(Token::Ret);
-        self.ops.push(Op::Ret);
 
+        let word_count = if let Some(Token::UnsignedImm(n)) = self.tokens.peek() {
+            let count = *n;
+            self.tokens.next().unwrap(); // consume NUM
+            assert_eq!(0, count % 2);
+            count / 2
+        } else {
+            0
+        };
+
+        self.ops.push(Op::Ret(word_count));
         self.expect(Token::Iden(String::default()));
         self.expect(Token::Endp);
     }
@@ -298,6 +372,13 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 pub enum RegisterTag {
     Ax,
     Bx,
+    Bp,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum OffsetOp {
+    Add,
+    Subtract,
 }
 
 // TODO: add register tag
@@ -323,16 +404,23 @@ impl Register {
 }
 
 pub trait AbstractMachine {
-    fn update_reg(&mut self, dst: RegisterTag, src: RegisterTag);
-    fn update_imm(&mut self, dst: RegisterTag, src: u16);
-    fn compare_imm(&mut self, reg: RegisterTag, value: u16);
     fn add_imm_unsigned(&mut self, reg: RegisterTag, value: u16);
     fn add_reg_unsigned(&mut self, dst: RegisterTag, src: RegisterTag);
-    fn unconditional_jump(&mut self, label: &str);
-    fn jump_not_equal(&mut self, label: &str);
-    fn jump_equal(&mut self, label: &str);
-    fn ret(&mut self);
     fn call(&mut self, proc: &str);
+    fn compare_imm(&mut self, reg: RegisterTag, value: u16);
+    fn jump_equal(&mut self, label: &str);
+    fn jump_not_equal(&mut self, label: &str);
+    fn push_reg(&mut self, src: RegisterTag);
+    fn ret(&mut self, n: u16);
+    fn unconditional_jump(&mut self, label: &str);
+    fn update_imm(&mut self, dst: RegisterTag, src: u16);
+    fn update_reg(&mut self, dst: RegisterTag, src: RegisterTag);
+    fn update_reg_from_mem(
+        &mut self,
+        dst: RegisterTag,
+        src: RegisterTag,
+        offset: &Option<(OffsetOp, u16)>,
+    );
     fn halt(&mut self);
     // FIXME maybe this doesn't belong here ...
     fn register_from_tag(&mut self, tag: RegisterTag) -> &mut Register;
@@ -370,6 +458,27 @@ impl AbstractMachine for Vm {
     fn update_imm(&mut self, dst: RegisterTag, src: u16) {
         let dst = self.register_from_tag(dst);
         dst.update(src);
+    }
+
+    fn update_reg_from_mem(
+        &mut self,
+        dst: RegisterTag,
+        src: RegisterTag,
+        offset: &Option<(OffsetOp, u16)>,
+    ) {
+        // TODO bounds checking, error handling, etc
+        let src = match src {
+            RegisterTag::Bp => self.bp,
+            _ => todo!(),
+        };
+
+        let value = match offset {
+            Some((OffsetOp::Add, n)) => self.stack[src + (*n as usize)],
+            Some((OffsetOp::Subtract, n)) => self.stack[src - (*n as usize)],
+            None => self.stack[src],
+        };
+
+        self.update_imm(dst, value);
     }
 
     // Updates AF, CF, OF, PF, SF, and ZF
@@ -425,12 +534,23 @@ impl AbstractMachine for Vm {
         }
     }
 
-    fn ret(&mut self) {
+    fn push_reg(&mut self, src: RegisterTag) {
+        let src = self.register_from_tag(src).value();
+        self.push(src);
+    }
+
+    fn ret(&mut self, n: u16) {
+        // Grab the ip from the top of the stack first, then clean up.
         self.ip = self.pop();
+
+        for _ in 0..n {
+            let _ = self.pop();
+        }
     }
 
     fn call(&mut self, proc: &str) {
         self.push(self.ip);
+        self.bp = self.sp.unwrap() as usize;
         self.ip = *self.symbol_table.get(proc).unwrap();
     }
 
@@ -442,6 +562,7 @@ impl AbstractMachine for Vm {
         match tag {
             RegisterTag::Ax => &mut self.ax,
             RegisterTag::Bx => &mut self.bx,
+            RegisterTag::Bp => todo!(),
         }
     }
 }
@@ -467,8 +588,8 @@ impl Vm {
             sp: None,
             bp: 0,
             symbol_table: HashMap::default(),
-            stack: vec![0; 1024],
-            stack_limit: 1024,
+            stack: vec![0; STACK_SIZE as usize],
+            stack_limit: STACK_SIZE,
             halt: false,
         }
     }
@@ -479,7 +600,8 @@ impl Vm {
         self.ip = *self.symbol_table.get(ENTRY_POINT).unwrap();
 
         while !self.halt {
-            let op = instructions.get(self.ip() as usize).unwrap();
+            let ip = self.ip() as usize;
+            let op = instructions.get(ip).unwrap();
             op.eval(self);
         }
 
@@ -543,32 +665,36 @@ impl Vm {
 
 #[derive(PartialEq, Debug)]
 pub enum Op {
-    MovImm(RegisterTag, u16),
-    MovReg(RegisterTag, RegisterTag),
-    CmpImm(RegisterTag, u16),
     AddImmUnsigned(RegisterTag, u16),
     AddReg(RegisterTag, RegisterTag),
-    Jmp(String),
-    Je(String),
-    Jne(String),
-    Ret,
     Call(String),
+    CmpImm(RegisterTag, u16),
+    Je(String),
+    Jmp(String),
+    Jne(String),
+    MovImm(RegisterTag, u16),
+    MovMem(RegisterTag, RegisterTag, Option<(OffsetOp, u16)>),
+    MovReg(RegisterTag, RegisterTag),
+    Push(RegisterTag),
+    Ret(u16),
     Halt, //< Implementation detail
 }
 
 impl Op {
     pub fn eval<T: AbstractMachine>(&self, machine: &mut T) {
         match self {
-            Self::MovImm(dst, src) => machine.update_imm(*dst, *src),
-            Self::MovReg(dst, src) => machine.update_reg(*dst, *src),
-            Self::CmpImm(dst, src) => machine.compare_imm(*dst, *src),
             Self::AddImmUnsigned(dst, src) => machine.add_imm_unsigned(*dst, *src),
             Self::AddReg(dst, src) => machine.add_reg_unsigned(*dst, *src),
+            Self::Call(proc) => machine.call(proc),
+            Self::CmpImm(dst, src) => machine.compare_imm(*dst, *src),
+            Self::Je(label) => machine.jump_equal(label),
             Self::Jmp(label) => machine.unconditional_jump(label),
             Self::Jne(label) => machine.jump_not_equal(label),
-            Self::Je(label) => machine.jump_equal(label),
-            Self::Ret => machine.ret(),
-            Self::Call(proc) => machine.call(proc),
+            Self::MovImm(dst, src) => machine.update_imm(*dst, *src),
+            Self::MovMem(dst, src, offset) => machine.update_reg_from_mem(*dst, *src, offset),
+            Self::MovReg(dst, src) => machine.update_reg(*dst, *src),
+            Self::Push(src) => machine.push_reg(*src),
+            Self::Ret(n) => machine.ret(*n),
             Self::Halt => machine.halt(),
         }
     }

@@ -5,7 +5,9 @@
 
 <end>        ::= end iden
 
+# NB: `ret` without an integer is syntactic sugar for `ret 0`.
 <procedure>  ::= iden proc <instr_list> ret iden endp
+<procedure>  ::= iden proc <instr_list> ret [0-9]+ iden endp
 
 <instr_list> ::= <label> <instr>
 <instr_list> ::= <label> <instr> <instr_list>
@@ -17,6 +19,7 @@
 <instr>      ::= <cmp>
 <instr>      ::= <jump>
 <instr>      ::= <mov>
+<instr>      ::= <push>
 
 <add>        ::= add reg unsigned_imm
 <add>        ::= add reg signed_imm
@@ -35,3 +38,10 @@
 <mov>        ::= mov reg unsigned_imm
 <mov>        ::= mov reg signed_imm
 <mov>        ::= mov reg reg
+<mov>        ::= mov reg mem
+
+<push>       ::= push reg
+
+<mem>        ::= word ptr [ reg ]
+<mem>        ::= word ptr [ reg + offset ]
+<mem>        ::= word ptr [ reg - offset ]

@@ -6,14 +6,15 @@ use bandera::Vm;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::result::Result;
 
-fn run(name: &str) -> Result<MachineState, Box<dyn Error>> {
+type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+fn run(name: &str) -> Result<MachineState> {
     let file = File::open(format!("tests/asm/{}", name))?;
     let program = Parser::new(
         BufReader::new(file)
             .lines()
-            .filter(Result::is_ok)
+            .filter(std::result::Result::is_ok)
             .flat_map(|line| lex(line.unwrap().chars().peekable()))
             .peekable(),
     )
@@ -29,7 +30,7 @@ fn register_from(value: u16) -> Register {
 }
 
 #[test]
-fn addition() -> Result<(), Box<dyn Error>> {
+fn addition() -> Result<()> {
     let actual = run("addition.asm")?;
     let expected = MachineState {
         ax: register_from(84),
@@ -41,7 +42,7 @@ fn addition() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn je() -> Result<(), Box<dyn Error>> {
+fn je() -> Result<()> {
     let actual = run("je.asm")?;
     let expected = MachineState {
         ax: register_from(84),
@@ -53,7 +54,7 @@ fn je() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn jne() -> Result<(), Box<dyn Error>> {
+fn jne() -> Result<()> {
     let actual = run("jne.asm")?;
     let expected = MachineState {
         ax: register_from(84),
@@ -65,7 +66,7 @@ fn jne() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn simple_loop() -> Result<(), Box<dyn Error>> {
+fn simple_loop() -> Result<()> {
     let actual = run("simple_loop.asm")?;
     let expected = MachineState {
         ax: register_from(10),
@@ -77,7 +78,7 @@ fn simple_loop() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn loop_with_call() -> Result<(), Box<dyn Error>> {
+fn loop_with_call() -> Result<()> {
     let actual = run("loop_with_call.asm")?;
     let expected = MachineState {
         ax: register_from(32000),
@@ -89,7 +90,7 @@ fn loop_with_call() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn simple_procedure() -> Result<(), Box<dyn Error>> {
+fn simple_procedure() -> Result<()> {
     let actual = run("simple_procedure.asm")?;
     let expected = MachineState {
         ax: register_from(42),
@@ -101,11 +102,47 @@ fn simple_procedure() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn call() -> Result<(), Box<dyn Error>> {
+fn call() -> Result<()> {
     let actual = run("call.asm")?;
     let expected = MachineState {
         ax: register_from(142),
         bx: register_from(0),
+    };
+
+    assert_eq!(actual, expected);
+    Ok(())
+}
+
+#[test]
+fn push() -> Result<()> {
+    let actual = run("push.asm")?;
+    let expected = MachineState {
+        ax: register_from(2),
+        bx: register_from(4),
+    };
+
+    assert_eq!(actual, expected);
+    Ok(())
+}
+
+#[test]
+fn empty_procedure() -> Result<()> {
+    let actual = run("empty_procedure.asm")?;
+    let expected = MachineState {
+        ax: register_from(42),
+        bx: register_from(0),
+    };
+
+    assert_eq!(actual, expected);
+    Ok(())
+}
+
+#[test]
+fn load_from_stack() -> Result<()> {
+    let actual = run("load_from_stack.asm")?;
+    let expected = MachineState {
+        ax: register_from(42),
+        bx: register_from(42),
     };
 
     assert_eq!(actual, expected);
