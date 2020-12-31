@@ -6,8 +6,7 @@ use std::iter::Peekable;
 use std::mem::discriminant;
 use std::str::Chars;
 
-// Ironically, the entry point to the assembler program is the symbol marked
-// 'END'
+// Ironically, the entry point to an assembler program is the symbol marked 'END'
 const ENTRY_POINT: &str = "END";
 
 #[derive(PartialEq, Debug)]
@@ -133,7 +132,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
     tokens
 }
 
-type SymbolTable = HashMap<String, usize>;
+type SymbolTable = HashMap<String, u16>;
 
 #[derive(Debug)]
 pub struct Program(SymbolTable, Vec<Op>);
@@ -218,7 +217,8 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn instr(&mut self) {
         if let Some(label) = self.pending_symbol.take() {
-            self.symbol_table.insert(label, self.ops.len());
+            self.symbol_table
+                .insert(label, self.ops.len().try_into().unwrap());
         }
 
         match self.tokens.peek() {
@@ -350,12 +350,15 @@ pub struct Vm {
     zf: u8,
     pf: u8,
     of: u8,
-    ip: usize,
-    sp: Option<usize>,
+    // It'd be _a lot_ nicer if these --ip and sp -- were usize so that indexing wouldn't require
+    // explicit casts. But then the instruction pointer would require a cast to push it onto the
+    // runtime stack.
+    ip: u16,
+    sp: Option<u16>,
     bp: usize,
     symbol_table: SymbolTable,
-    stack: Vec<usize>,
-    stack_limit: usize,
+    stack: Vec<u16>,
+    stack_limit: u16,
     halt: bool,
 }
 
@@ -477,14 +480,14 @@ impl Vm {
         self.ip = *self.symbol_table.get(ENTRY_POINT).unwrap();
 
         while !self.halt {
-            let op = instructions.get(self.ip()).unwrap();
+            let op = instructions.get(self.ip() as usize).unwrap();
             op.eval(self);
         }
 
         Ok(self.state())
     }
 
-    pub fn ip(&mut self) -> usize {
+    pub fn ip(&mut self) -> u16 {
         let instruction_pointer = self.ip;
         self.ip = self.ip + 1;
         instruction_pointer
@@ -501,37 +504,41 @@ impl Vm {
         }
     }
 
-    fn push(&mut self, value: usize) {
+    //
+    // `push` and `pop` follow the historical convention of growing downward and upward
+    // respectively. This differs from standard `stack` conventions but is expected in _nominal_
+    // assembler programming.
+    //
+
+    fn push(&mut self, value: u16) {
         let limit = self.stack_limit - 1;
         let sp = match self.sp {
-            Some(l) if l == limit => panic!("stack overflow!"),
+            Some(0) => panic!("stack overflow!"),
             Some(sp) => {
-                self.sp = Some(sp + 1);
-                sp
+                self.sp = Some(sp - 1);
+                sp - 1
             }
             None => {
-                self.sp = Some(0);
-                0
+                self.sp = Some(limit);
+                limit
             }
         };
 
-        self.stack[sp] = value;
+        self.stack[sp as usize] = value;
     }
 
-    fn pop(&mut self) -> usize {
-        let top = match self.sp {
-            Some(0) => {
-                self.sp = None;
-                0
+    fn pop(&mut self) -> u16 {
+        let limit = self.stack_limit - 1;
+        let st = match self.sp {
+            Some(t) if t == limit => self.sp.take().unwrap(),
+            Some(t) => {
+                self.sp = Some(t + 1);
+                t
             }
-            Some(s) => {
-                self.sp = Some(s - 1);
-                s
-            }
-            None => panic!("stack is already empty!"),
+            None => panic!("stack underflow"),
         };
 
-        self.stack[top]
+        self.stack[st as usize]
     }
 }
 
@@ -617,6 +624,6 @@ mod tests {
             Token::Iden(String::from("main")),
         ];
         let Program(symbols, _) = Parser::new(tokens.into_iter().peekable()).run();
-        assert_eq!(symbols.get("Foo"), Some(&(1 as usize)));
+        assert_eq!(symbols.get("Foo"), Some(&(1)));
     }
 }
