@@ -430,6 +430,7 @@ pub trait AbstractMachine {
 pub struct Vm {
     ax: Register,
     bx: Register,
+    bp: Register,
     cf: u8,
     af: u8,
     sf: u8,
@@ -441,7 +442,6 @@ pub struct Vm {
     // runtime stack.
     ip: u16,
     sp: Option<u16>,
-    bp: usize,
     symbol_table: SymbolTable,
     stack: Vec<u16>,
     stack_limit: u16,
@@ -473,9 +473,9 @@ impl AbstractMachine for Vm {
         };
 
         let value = match offset {
-            Some((OffsetOp::Add, n)) => self.stack[src + (*n as usize)],
-            Some((OffsetOp::Subtract, n)) => self.stack[src - (*n as usize)],
-            None => self.stack[src],
+            Some((OffsetOp::Add, n)) => self.stack[(src.value() + *n) as usize],
+            Some((OffsetOp::Subtract, n)) => self.stack[(src.value() + *n) as usize],
+            None => self.stack[src.value() as usize],
         };
 
         self.update_imm(dst, value);
@@ -550,7 +550,7 @@ impl AbstractMachine for Vm {
 
     fn call(&mut self, proc: &str) {
         self.push(self.ip);
-        self.bp = self.sp.unwrap() as usize;
+        self.bp.update(self.sp.unwrap());
         self.ip = *self.symbol_table.get(proc).unwrap();
     }
 
@@ -586,7 +586,7 @@ impl Vm {
             of: 0,
             ip: 0,
             sp: None,
-            bp: 0,
+            bp: Register::new(),
             symbol_table: HashMap::default(),
             stack: vec![0; STACK_SIZE as usize],
             stack_limit: STACK_SIZE,
