@@ -194,7 +194,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn mov(&mut self) {
-        self.tokens.next().unwrap(); // consume MOV
+        self.expect(Token::Mov);
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
 
         match self.tokens.next() {
@@ -231,7 +231,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn add(&mut self) {
-        self.tokens.next().unwrap(); // consume ADD
+        self.expect(Token::Add);
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::AddReg(dst, src)),
@@ -241,7 +241,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn call(&mut self) {
-        self.tokens.next().unwrap(); // consume CALL
+        self.expect(Token::Call);
         let proc = self.tokens.next().unwrap().into_iden_unchecked();
         self.ops.push(Op::Call(proc));
     }
@@ -257,7 +257,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn cmp(&mut self) {
-        self.tokens.next().unwrap(); // consume CMP
+        self.expect(Token::Cmp);
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
         match self.tokens.next() {
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::CmpImm(dst, src as u16)),
@@ -266,7 +266,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn push(&mut self) {
-        self.tokens.next().unwrap(); // consume PUSH
+        self.expect(Token::Push);
         let src = self.tokens.next().unwrap().into_reg_unchecked();
         self.ops.push(Op::Push(src));
     }
@@ -325,7 +325,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         assert!(self.pending_symbol.is_none());
         self.pending_symbol = Some(iden);
 
-        self.tokens.next().unwrap(); // consume PROC
+        self.expect(Token::Proc);
 
         self.instr_list();
 
@@ -333,7 +333,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
         let word_count = if let Some(Token::UnsignedImm(n)) = self.tokens.peek() {
             let count = *n;
-            self.tokens.next().unwrap(); // consume NUM
+            self.expect(Token::UnsignedImm(0));
             assert_eq!(0, count % 2);
             count / 2
         } else {
