@@ -23,18 +23,12 @@ fn run(name: &str) -> Result<MachineState> {
     Vm::new().run(program)
 }
 
-fn register_from(value: u16) -> Register {
-    let mut reg = Register::new();
-    reg.update(value);
-    reg
-}
-
 #[test]
 fn addition() -> Result<()> {
     let actual = run("addition.asm")?;
     let expected = MachineState {
-        ax: register_from(84),
-        bx: register_from(0),
+        ax: Register::Ax(84),
+        bx: Register::Bx(0),
     };
 
     assert_eq!(actual, expected);
@@ -45,8 +39,8 @@ fn addition() -> Result<()> {
 fn je() -> Result<()> {
     let actual = run("je.asm")?;
     let expected = MachineState {
-        ax: register_from(84),
-        bx: register_from(0),
+        ax: Register::Ax(84),
+        bx: Register::Bx(0),
     };
 
     assert_eq!(actual, expected);
@@ -57,8 +51,8 @@ fn je() -> Result<()> {
 fn jne() -> Result<()> {
     let actual = run("jne.asm")?;
     let expected = MachineState {
-        ax: register_from(84),
-        bx: register_from(0),
+        ax: Register::Ax(84),
+        bx: Register::Bx(0),
     };
 
     assert_eq!(actual, expected);
@@ -69,8 +63,8 @@ fn jne() -> Result<()> {
 fn simple_loop() -> Result<()> {
     let actual = run("simple_loop.asm")?;
     let expected = MachineState {
-        ax: register_from(10),
-        bx: register_from(0),
+        ax: Register::Ax(10),
+        bx: Register::Bx(0),
     };
 
     assert_eq!(actual, expected);
@@ -81,8 +75,8 @@ fn simple_loop() -> Result<()> {
 fn loop_with_call() -> Result<()> {
     let actual = run("loop_with_call.asm")?;
     let expected = MachineState {
-        ax: register_from(32000),
-        bx: register_from(0),
+        ax: Register::Ax(32000),
+        bx: Register::Bx(0),
     };
 
     assert_eq!(actual, expected);
@@ -93,8 +87,8 @@ fn loop_with_call() -> Result<()> {
 fn simple_procedure() -> Result<()> {
     let actual = run("simple_procedure.asm")?;
     let expected = MachineState {
-        ax: register_from(42),
-        bx: register_from(0),
+        ax: Register::Ax(42),
+        bx: Register::Bx(0),
     };
 
     assert_eq!(actual, expected);
@@ -105,8 +99,8 @@ fn simple_procedure() -> Result<()> {
 fn call() -> Result<()> {
     let actual = run("call.asm")?;
     let expected = MachineState {
-        ax: register_from(142),
-        bx: register_from(0),
+        ax: Register::Ax(142),
+        bx: Register::Bx(0),
     };
 
     assert_eq!(actual, expected);
@@ -117,8 +111,8 @@ fn call() -> Result<()> {
 fn push() -> Result<()> {
     let actual = run("push.asm")?;
     let expected = MachineState {
-        ax: register_from(2),
-        bx: register_from(4),
+        ax: Register::Ax(2),
+        bx: Register::Bx(4),
     };
 
     assert_eq!(actual, expected);
@@ -129,8 +123,8 @@ fn push() -> Result<()> {
 fn empty_procedure() -> Result<()> {
     let actual = run("empty_procedure.asm")?;
     let expected = MachineState {
-        ax: register_from(42),
-        bx: register_from(0),
+        ax: Register::Ax(42),
+        bx: Register::Bx(0),
     };
 
     assert_eq!(actual, expected);
@@ -141,8 +135,8 @@ fn empty_procedure() -> Result<()> {
 fn load_from_stack() -> Result<()> {
     let actual = run("load_from_stack.asm")?;
     let expected = MachineState {
-        ax: register_from(42),
-        bx: register_from(42),
+        ax: Register::Ax(42),
+        bx: Register::Bx(42),
     };
 
     assert_eq!(actual, expected);

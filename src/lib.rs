@@ -226,7 +226,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
                 self.expect(Token::RightBracket);
                 self.ops.push(Op::MovMem(dst, src, offset))
             }
-            _ => panic!("invalid mov"),
+            t => panic!("{:?} -- invalid mov", t),
         }
     }
 
@@ -383,23 +383,44 @@ pub enum OffsetOp {
 
 // TODO: add register tag
 #[derive(Debug, PartialEq, Copy, Clone)]
-pub struct Register {
-    // TODO: A _register_ can really be 8 or 16 bit (i.e. a 16 bit register can
-    // split into two 8-bit registers).
-    value: u16,
+pub enum Register {
+    Ax(u16),
+    Bx(u16),
+    Bp(u16),
+    Sp(Option<u16>),
 }
 
 impl Register {
-    pub fn new() -> Self {
-        Register { value: 0 }
+    pub fn update(&mut self, value: u16) {
+        match self {
+            Self::Ax(old) => *old = value,
+            Self::Bx(old) => *old = value,
+            Self::Bp(old) => *old = value,
+            Self::Sp(old) => *old = Some(value),
+        }
     }
 
-    pub fn update(&mut self, src: u16) {
-        self.value = src;
+    fn as_gpr(&self) -> u16 {
+        match self {
+            Self::Ax(v) => *v,
+            Self::Bx(v) => *v,
+            Self::Bp(v) => *v,
+            Self::Sp(_) => panic!("not a general purpose register!"),
+        }
     }
 
-    fn value(&self) -> u16 {
-        self.value
+    fn as_mut_sp(&mut self) -> &mut Option<u16> {
+        match self {
+            Self::Sp(s) => s,
+            _ => panic!("not a stack pointer"),
+        }
+    }
+
+    fn as_sp(&self) -> &Option<u16> {
+        match self {
+            Self::Sp(s) => s,
+            _ => panic!("not a stack pointer"),
+        }
     }
 }
 
@@ -441,7 +462,7 @@ pub struct Vm {
     // explicit casts. But then the instruction pointer would require a cast to push it onto the
     // runtime stack.
     ip: u16,
-    sp: Option<u16>,
+    sp: Register,
     symbol_table: SymbolTable,
     stack: Vec<u16>,
     stack_limit: u16,
@@ -450,7 +471,7 @@ pub struct Vm {
 
 impl AbstractMachine for Vm {
     fn update_reg(&mut self, dst: RegisterTag, src: RegisterTag) {
-        let src = self.register_from_tag(src).value();
+        let src = self.register_from_tag(src).as_gpr();
         let dst = self.register_from_tag(dst);
         dst.update(src);
     }
@@ -473,9 +494,9 @@ impl AbstractMachine for Vm {
         };
 
         let value = match offset {
-            Some((OffsetOp::Add, n)) => self.stack[(src.value() + *n) as usize],
-            Some((OffsetOp::Subtract, n)) => self.stack[(src.value() + *n) as usize],
-            None => self.stack[src.value() as usize],
+            Some((OffsetOp::Add, n)) => self.stack[(src.as_gpr() + *n) as usize],
+            Some((OffsetOp::Subtract, n)) => self.stack[(src.as_gpr() + *n) as usize],
+            None => self.stack[src.as_gpr() as usize],
         };
 
         self.update_imm(dst, value);
@@ -483,7 +504,7 @@ impl AbstractMachine for Vm {
 
     // Updates AF, CF, OF, PF, SF, and ZF
     fn compare_imm(&mut self, dst: RegisterTag, src: u16) {
-        let dst = self.register_from_tag(dst).value();
+        let dst = self.register_from_tag(dst).as_gpr();
 
         // hmmmmmmmmmmmmmmm
         let r = (dst as i16) - (src as i16);
@@ -505,14 +526,14 @@ impl AbstractMachine for Vm {
     fn add_imm_unsigned(&mut self, dst: RegisterTag, src: u16) {
         // TODO set flags
         let dst = self.register_from_tag(dst);
-        dst.update(dst.value() + src as u16);
+        dst.update(dst.as_gpr() + src as u16);
     }
 
     fn add_reg_unsigned(&mut self, dst: RegisterTag, src: RegisterTag) {
         // TODO set flags
-        let src = self.register_from_tag(src).value();
+        let src = self.register_from_tag(src).as_gpr();
         let dst = self.register_from_tag(dst);
-        dst.update(dst.value() + src);
+        dst.update(dst.as_gpr() + src);
     }
 
     fn unconditional_jump(&mut self, label: &str) {
@@ -535,7 +556,7 @@ impl AbstractMachine for Vm {
     }
 
     fn push_reg(&mut self, src: RegisterTag) {
-        let src = self.register_from_tag(src).value();
+        let src = self.register_from_tag(src).as_gpr();
         self.push(src);
     }
 
@@ -550,7 +571,7 @@ impl AbstractMachine for Vm {
 
     fn call(&mut self, proc: &str) {
         self.push(self.ip);
-        self.bp.update(self.sp.unwrap());
+        self.bp.update(self.sp.as_sp().unwrap());
         self.ip = *self.symbol_table.get(proc).unwrap();
     }
 
@@ -576,8 +597,8 @@ pub struct MachineState {
 impl Vm {
     pub fn new() -> Self {
         Vm {
-            ax: Register::new(),
-            bx: Register::new(),
+            ax: Register::Ax(0),
+            bx: Register::Bx(0),
             cf: 0,
             af: 0,
             sf: 0,
@@ -585,8 +606,8 @@ impl Vm {
             pf: 0,
             of: 0,
             ip: 0,
-            sp: None,
-            bp: Register::new(),
+            sp: Register::Sp(None),
+            bp: Register::Bp(0),
             symbol_table: HashMap::default(),
             stack: vec![0; STACK_SIZE as usize],
             stack_limit: STACK_SIZE,
@@ -633,14 +654,14 @@ impl Vm {
 
     fn push(&mut self, value: u16) {
         let limit = self.stack_limit - 1;
-        let sp = match self.sp {
+        let sp = match *self.sp.as_sp() {
             Some(0) => panic!("stack overflow!"),
             Some(sp) => {
-                self.sp = Some(sp - 1);
+                *self.sp.as_mut_sp() = Some(sp - 1);
                 sp - 1
             }
             None => {
-                self.sp = Some(limit);
+                *self.sp.as_mut_sp() = Some(limit);
                 limit
             }
         };
@@ -650,10 +671,10 @@ impl Vm {
 
     fn pop(&mut self) -> u16 {
         let limit = self.stack_limit - 1;
-        let st = match self.sp {
-            Some(t) if t == limit => self.sp.take().unwrap(),
+        let st = match *self.sp.as_sp() {
+            Some(t) if t == limit => self.sp.as_mut_sp().take().unwrap(),
             Some(t) => {
-                self.sp = Some(t + 1);
+                *self.sp.as_mut_sp() = Some(t + 1);
                 t
             }
             None => panic!("stack underflow"),
