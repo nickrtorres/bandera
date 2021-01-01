@@ -20,6 +20,7 @@
 <instr>      ::= <jump>
 <instr>      ::= <mov>
 <instr>      ::= <push>
+<instr>      ::= <sub>
 
 <add>        ::= add reg unsigned_imm
 <add>        ::= add reg signed_imm
@@ -41,6 +42,8 @@
 <mov>        ::= mov reg mem
 
 <push>       ::= push reg
+
+<sub>        ::= sub reg unsigned_imm
 
 <mem>        ::= word ptr [ reg ]
 <mem>        ::= word ptr [ reg + offset ]

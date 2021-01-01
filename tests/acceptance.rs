@@ -142,3 +142,15 @@ fn load_from_stack() -> Result<()> {
     assert_eq!(actual, expected);
     Ok(())
 }
+
+#[test]
+fn sub() -> Result<()> {
+    let actual = run("sub.asm")?;
+    let expected = MachineState {
+        ax: Register::Ax(42),
+        bx: Register::Bx(0),
+    };
+
+    assert_eq!(actual, expected);
+    Ok(())
+}

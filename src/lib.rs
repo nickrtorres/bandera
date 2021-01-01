@@ -33,6 +33,7 @@ pub enum Token {
     Ret,
     RightBracket,
     SignedImm(i16),
+    Sub,
     UnsignedImm(u16),
     Word,
 }
@@ -135,6 +136,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         "ax" => tokens.push(Token::Reg(RegisterTag::Ax)),
                         "bx" => tokens.push(Token::Reg(RegisterTag::Bx)),
                         "bp" => tokens.push(Token::Reg(RegisterTag::Bp)),
+                        "sp" => tokens.push(Token::Reg(RegisterTag::Sp)),
                         "add" => tokens.push(Token::Add),
                         "call" => tokens.push(Token::Call),
                         "cmp" => tokens.push(Token::Cmp),
@@ -148,6 +150,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         "ptr" => tokens.push(Token::Ptr),
                         "push" => tokens.push(Token::Push),
                         "ret" => tokens.push(Token::Ret),
+                        "sub" => tokens.push(Token::Sub),
                         "word" => tokens.push(Token::Word),
                         _ => tokens.push(Token::Iden(scratch)),
                     }
@@ -182,10 +185,10 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn expect(&mut self, expected: Token) {
-        if !self.tokens.next().map_or(false, move |actual| {
+        if !self.tokens.next().map_or(false, |actual| {
             discriminant(&expected) == discriminant(&actual)
         }) {
-            panic!();
+            panic!("Expected => {:?}", expected);
         }
     }
 
@@ -271,6 +274,15 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.ops.push(Op::Push(src));
     }
 
+    fn sub(&mut self) {
+        self.expect(Token::Sub);
+        let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        match self.tokens.next() {
+            Some(Token::UnsignedImm(src)) => self.ops.push(Op::SubImm(dst, src)),
+            _ => panic!("invalid sub"),
+        }
+    }
+
     fn instr(&mut self) {
         if let Some(label) = self.pending_symbol.take() {
             self.symbol_table
@@ -283,6 +295,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
             Some(Token::Call) => self.call(),
             Some(Token::Cmp) => self.cmp(),
             Some(Token::Push) => self.push(),
+            Some(Token::Sub) => self.sub(),
             Some(Token::Jmp) | Some(Token::Jne) | Some(Token::Je) => {
                 let token = self.tokens.next().unwrap();
                 let next = self.tokens.next().unwrap();
@@ -373,6 +386,7 @@ pub enum RegisterTag {
     Ax,
     Bx,
     Bp,
+    Sp,
 }
 
 #[derive(Debug, PartialEq)]
@@ -433,6 +447,7 @@ pub trait AbstractMachine {
     fn jump_not_equal(&mut self, label: &str);
     fn push_reg(&mut self, src: RegisterTag);
     fn ret(&mut self, n: u16);
+    fn sub_imm(&mut self, dst: RegisterTag, src: u16);
     fn unconditional_jump(&mut self, label: &str);
     fn update_imm(&mut self, dst: RegisterTag, src: u16);
     fn update_reg(&mut self, dst: RegisterTag, src: RegisterTag);
@@ -575,6 +590,12 @@ impl AbstractMachine for Vm {
         self.ip = *self.symbol_table.get(proc).unwrap();
     }
 
+    fn sub_imm(&mut self, dst: RegisterTag, src: u16) {
+        // TODO set flags
+        let dst = self.register_from_tag(dst);
+        dst.update(dst.as_gpr() - src);
+    }
+
     fn halt(&mut self) {
         self.halt = true;
     }
@@ -584,6 +605,7 @@ impl AbstractMachine for Vm {
             RegisterTag::Ax => &mut self.ax,
             RegisterTag::Bx => &mut self.bx,
             RegisterTag::Bp => todo!(),
+            RegisterTag::Sp => todo!(),
         }
     }
 }
@@ -698,6 +720,7 @@ pub enum Op {
     MovReg(RegisterTag, RegisterTag),
     Push(RegisterTag),
     Ret(u16),
+    SubImm(RegisterTag, u16),
     Halt, //< Implementation detail
 }
 
@@ -716,6 +739,7 @@ impl Op {
             Self::MovReg(dst, src) => machine.update_reg(*dst, *src),
             Self::Push(src) => machine.push_reg(*src),
             Self::Ret(n) => machine.ret(*n),
+            Self::SubImm(dst, src) => machine.sub_imm(*dst, *src),
             Self::Halt => machine.halt(),
         }
     }
