@@ -28,6 +28,7 @@ pub enum Token {
     Minus,
     Mov,
     Plus,
+    Pop,
     Proc,
     Ptr,
     Push,
@@ -149,6 +150,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         "jmp" => tokens.push(Token::Jmp),
                         "jne" => tokens.push(Token::Jne),
                         "mov" => tokens.push(Token::Mov),
+                        "pop" => tokens.push(Token::Pop),
                         "proc" => tokens.push(Token::Proc),
                         "ptr" => tokens.push(Token::Ptr),
                         "push" => tokens.push(Token::Push),
@@ -278,6 +280,12 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.ops.push(Op::Push(src));
     }
 
+    fn pop(&mut self) {
+        self.expect(Token::Pop);
+        let src = self.tokens.next().unwrap().into_reg_unchecked();
+        self.ops.push(Op::Pop(src));
+    }
+
     fn sub(&mut self) {
         self.expect(Token::Sub);
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
@@ -299,6 +307,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
             Some(Token::Call) => self.call(),
             Some(Token::Cmp) => self.cmp(),
             Some(Token::Push) => self.push(),
+            Some(Token::Pop) => self.pop(),
             Some(Token::Sub) => self.sub(),
             Some(Token::Jmp) | Some(Token::Jne) | Some(Token::Je) | Some(Token::Jge) => {
                 let token = self.tokens.next().unwrap();
@@ -451,6 +460,7 @@ pub trait AbstractMachine {
     fn jump_not_equal(&mut self, label: &str);
     fn jump_gt_equal(&mut self, label: &str);
     fn push_reg(&mut self, src: RegisterTag);
+    fn pop_reg(&mut self, dst: RegisterTag);
     fn ret(&mut self, n: u16);
     fn sub_imm(&mut self, dst: RegisterTag, src: u16);
     fn unconditional_jump(&mut self, label: &str);
@@ -592,6 +602,12 @@ impl AbstractMachine for Vm {
         self.push(src);
     }
 
+    fn pop_reg(&mut self, dst: RegisterTag) {
+        let value = self.pop();
+        let dst = self.register_from_tag(dst);
+        dst.update(value);
+    }
+
     fn ret(&mut self, n: u16) {
         // Grab the ip from the top of the stack first, then clean up.
         self.ip = self.pop();
@@ -730,15 +746,16 @@ pub enum Op {
     Call(String),
     CmpImm(RegisterTag, u16),
     Je(String),
+    Jge(String),
     Jmp(String),
     Jne(String),
     MovImm(RegisterTag, u16),
     MovMem(RegisterTag, RegisterTag, Option<(OffsetOp, u16)>),
     MovReg(RegisterTag, RegisterTag),
+    Pop(RegisterTag),
     Push(RegisterTag),
     Ret(u16),
     SubImm(RegisterTag, u16),
-    Jge(String),
     Halt, //< Implementation detail
 }
 
@@ -750,15 +767,16 @@ impl Op {
             Self::Call(proc) => machine.call(proc),
             Self::CmpImm(dst, src) => machine.compare_imm(*dst, *src),
             Self::Je(label) => machine.jump_equal(label),
+            Self::Jge(label) => machine.jump_gt_equal(label),
             Self::Jmp(label) => machine.unconditional_jump(label),
             Self::Jne(label) => machine.jump_not_equal(label),
             Self::MovImm(dst, src) => machine.update_imm(*dst, *src),
             Self::MovMem(dst, src, offset) => machine.update_reg_from_mem(*dst, *src, offset),
             Self::MovReg(dst, src) => machine.update_reg(*dst, *src),
+            Self::Pop(dst) => machine.pop_reg(*dst),
             Self::Push(src) => machine.push_reg(*src),
             Self::Ret(n) => machine.ret(*n),
             Self::SubImm(dst, src) => machine.sub_imm(*dst, *src),
-            Self::Jge(label) => machine.jump_gt_equal(label),
             Self::Halt => machine.halt(),
         }
     }

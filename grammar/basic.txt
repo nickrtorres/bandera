@@ -19,6 +19,7 @@
 <instr>      ::= <cmp>
 <instr>      ::= <jump>
 <instr>      ::= <mov>
+<instr>      ::= <pop>
 <instr>      ::= <push>
 <instr>      ::= <sub>
 
@@ -41,6 +42,8 @@
 <mov>        ::= mov reg signed_imm
 <mov>        ::= mov reg reg
 <mov>        ::= mov reg mem
+
+<pop>        ::= pop reg
 
 <push>       ::= push reg
 

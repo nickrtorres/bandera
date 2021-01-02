@@ -166,3 +166,15 @@ fn jge() -> Result<()> {
     assert_eq!(actual, expected);
     Ok(())
 }
+
+#[test]
+fn pop() -> Result<()> {
+    let actual = run("pop.asm")?;
+    let expected = MachineState {
+        ax: Register::Ax(142),
+        bx: Register::Bx(42),
+    };
+
+    assert_eq!(actual, expected);
+    Ok(())
+}
