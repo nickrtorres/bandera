@@ -6,7 +6,8 @@ use std::iter::Peekable;
 use std::mem::discriminant;
 use std::str::Chars;
 
-// Ironically, the entry point to an assembler program is the symbol marked 'END'
+// Ironically, the entry point to an assembler program is the symbol marked
+// 'END'
 const ENTRY_POINT: &str = "END";
 const STACK_SIZE: u16 = 20;
 
@@ -477,9 +478,9 @@ pub struct Vm {
     zf: u8,
     pf: u8,
     of: u8,
-    // It'd be _a lot_ nicer if these --ip and sp -- were usize so that indexing wouldn't require
-    // explicit casts. But then the instruction pointer would require a cast to push it onto the
-    // runtime stack.
+    // It'd be _a lot_ nicer if these --ip and sp -- were usize so that indexing
+    // wouldn't require explicit casts. But then the instruction pointer would
+    // require a cast to push it onto the runtime stack.
     ip: u16,
     sp: Register,
     symbol_table: SymbolTable,
@@ -685,9 +686,9 @@ impl Vm {
     }
 
     //
-    // `push` and `pop` follow the historical convention of growing downward and upward
-    // respectively. This differs from standard `stack` conventions but is expected in _nominal_
-    // assembler programming.
+    // `push` and `pop` follow the historical convention of growing downward and
+    // upward respectively. This differs from standard `stack` conventions but
+    // is expected in _nominal_ assembler programming.
     //
 
     fn push(&mut self, value: u16) {
