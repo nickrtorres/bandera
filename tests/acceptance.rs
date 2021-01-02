@@ -154,3 +154,15 @@ fn sub() -> Result<()> {
     assert_eq!(actual, expected);
     Ok(())
 }
+
+#[test]
+fn jge() -> Result<()> {
+    let actual = run("jge.asm")?;
+    let expected = MachineState {
+        ax: Register::Ax(4),
+        bx: Register::Bx(0),
+    };
+
+    assert_eq!(actual, expected);
+    Ok(())
+}

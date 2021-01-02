@@ -35,6 +35,7 @@
 <jump>       ::= jmp iden
 <jump>       ::= jne iden
 <jump>       ::= je iden
+<jump>       ::= jge iden
 
 <mov>        ::= mov reg unsigned_imm
 <mov>        ::= mov reg signed_imm

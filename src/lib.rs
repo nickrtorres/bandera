@@ -19,6 +19,7 @@ pub enum Token {
     Endp,
     Iden(String),
     Je,
+    Jge,
     Jmp,
     Jne,
     Label(String),
@@ -143,6 +144,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         "end" => tokens.push(Token::End),
                         "endp" => tokens.push(Token::Endp),
                         "je" => tokens.push(Token::Je),
+                        "jge" => tokens.push(Token::Jge),
                         "jmp" => tokens.push(Token::Jmp),
                         "jne" => tokens.push(Token::Jne),
                         "mov" => tokens.push(Token::Mov),
@@ -254,6 +256,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         match j {
             Token::Jmp => self.ops.push(Op::Jmp(label)),
             Token::Jne => self.ops.push(Op::Jne(label)),
+            Token::Jge => self.ops.push(Op::Jge(label)),
             Token::Je => self.ops.push(Op::Je(label)),
             _ => panic!("expected jump not => {:?}", j),
         }
@@ -296,7 +299,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
             Some(Token::Cmp) => self.cmp(),
             Some(Token::Push) => self.push(),
             Some(Token::Sub) => self.sub(),
-            Some(Token::Jmp) | Some(Token::Jne) | Some(Token::Je) => {
+            Some(Token::Jmp) | Some(Token::Jne) | Some(Token::Je) | Some(Token::Jge) => {
                 let token = self.tokens.next().unwrap();
                 let next = self.tokens.next().unwrap();
                 self.jump(token, next)
@@ -445,6 +448,7 @@ pub trait AbstractMachine {
     fn compare_imm(&mut self, reg: RegisterTag, value: u16);
     fn jump_equal(&mut self, label: &str);
     fn jump_not_equal(&mut self, label: &str);
+    fn jump_gt_equal(&mut self, label: &str);
     fn push_reg(&mut self, src: RegisterTag);
     fn ret(&mut self, n: u16);
     fn sub_imm(&mut self, dst: RegisterTag, src: u16);
@@ -517,24 +521,29 @@ impl AbstractMachine for Vm {
         self.update_imm(dst, value);
     }
 
+    // TODO:
+    // This, along with the other arithmetic routines, should probably move into
+    // an ALU module. The virtual machine would then call into the ALU and set
+    // its flags based on the state / output of the ALU.
+    //
     // Updates AF, CF, OF, PF, SF, and ZF
     fn compare_imm(&mut self, dst: RegisterTag, src: u16) {
         let dst = self.register_from_tag(dst).as_gpr();
 
         // hmmmmmmmmmmmmmmm
-        let r = (dst as i16) - (src as i16);
+        let y = (dst as i16) - (src as i16);
 
         // TODO
-        // > If a subtraction results in a borrow into the high-order bit of
-        //   the result, then CF is set; otherwise CF is cleared.
+        // > If a subtraction results in a borrow into the high-order bit of the
+        //   result, then CF is set; otherwise CF is cleared.
         // For now, just clear CF.
         self.cf = 0;
         self.af = 0;
-        self.sf = (r <= 0) as u8;
-        self.zf = (r == 0) as u8;
+        self.sf = (y < 0) as u8;
+        self.zf = (y == 0) as u8;
 
         // TODO: audit
-        self.pf = (r.count_ones() % 2 == 0) as u8;
+        self.pf = (y.count_ones() % 2 == 0) as u8;
         self.of = 0;
     }
 
@@ -558,6 +567,13 @@ impl AbstractMachine for Vm {
 
     fn jump_not_equal(&mut self, label: &str) {
         if self.zf == 0 {
+            // TODO: handle failure
+            self.ip = *self.symbol_table.get(label).unwrap();
+        }
+    }
+
+    fn jump_gt_equal(&mut self, label: &str) {
+        if (self.sf ^ self.of) == 0 {
             // TODO: handle failure
             self.ip = *self.symbol_table.get(label).unwrap();
         }
@@ -721,6 +737,7 @@ pub enum Op {
     Push(RegisterTag),
     Ret(u16),
     SubImm(RegisterTag, u16),
+    Jge(String),
     Halt, //< Implementation detail
 }
 
@@ -740,6 +757,7 @@ impl Op {
             Self::Push(src) => machine.push_reg(*src),
             Self::Ret(n) => machine.ret(*n),
             Self::SubImm(dst, src) => machine.sub_imm(*dst, *src),
+            Self::Jge(label) => machine.jump_gt_equal(label),
             Self::Halt => machine.halt(),
         }
     }
