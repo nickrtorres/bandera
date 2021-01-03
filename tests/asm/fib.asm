@@ -33,6 +33,7 @@ main:
   mov ax, 24
   push ax
   call fib
+  mov bx, 0
 
 end main
 
