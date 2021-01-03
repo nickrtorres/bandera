@@ -102,9 +102,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         break;
                     }
                 }
-                tokens.push(Token::SignedImm(buffer.parse::<i16>().expect(
-                    format!("{} is not a valid signed 16 bit integer", buffer).as_str(),
-                )));
+                tokens.push(Token::SignedImm(buffer.parse::<i16>().unwrap()));
             }
             c => {
                 if c.is_ascii_digit() {
@@ -116,9 +114,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                             break;
                         }
                     }
-                    tokens.push(Token::UnsignedImm(buffer.parse::<u16>().expect(
-                        format!("{} is not a valid signed 16 bit integer", buffer).as_str(),
-                    )));
+                    tokens.push(Token::UnsignedImm(buffer.parse::<u16>().unwrap()));
                 } else {
                     let mut scratch = String::from(c);
                     while let Some(c) = stream.next() {
@@ -129,7 +125,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                         scratch.push(c);
                     }
 
-                    if scratch.ends_with(":") {
+                    if scratch.ends_with(':') {
                         scratch.pop();
                         tokens.push(Token::Label(scratch));
                         continue;
@@ -207,9 +203,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::MovReg(dst, src)),
-            Some(Token::UnsignedImm(src)) => {
-                self.ops.push(Op::MovImm(dst, src.try_into().unwrap()))
-            }
+            Some(Token::UnsignedImm(src)) => self.ops.push(Op::MovImm(dst, src)),
             Some(Token::Word) => {
                 self.expect(Token::Ptr);
                 self.expect(Token::LeftBracket);
@@ -694,7 +688,7 @@ impl Vm {
 
     pub fn ip(&mut self) -> u16 {
         let instruction_pointer = self.ip;
-        self.ip = self.ip + 1;
+        self.ip += 1;
         instruction_pointer
     }
 
