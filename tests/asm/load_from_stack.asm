@@ -1,5 +1,8 @@
 foo proc
-  mov bx, word ptr [bp + 2]
+  push bp
+  mov bp, sp
+  mov bx, word ptr [bp + 4]
+  pop bp
   ret 2
 foo endp
 

@@ -178,3 +178,15 @@ fn pop() -> Result<()> {
     assert_eq!(actual, expected);
     Ok(())
 }
+
+#[test]
+fn fib() -> Result<()> {
+    let actual = run("fib.asm")?;
+    let expected = MachineState {
+        ax: Register::Ax(46368),
+        bx: Register::Bx(0),
+    };
+
+    assert_eq!(actual, expected);
+    Ok(())
+}

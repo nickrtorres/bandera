@@ -9,7 +9,7 @@ use std::str::Chars;
 // Ironically, the entry point to an assembler program is the symbol marked
 // 'END'
 const ENTRY_POINT: &str = "END";
-const STACK_SIZE: u16 = 20;
+const STACK_SIZE: u16 = 1024;
 
 #[derive(PartialEq, Debug)]
 pub enum Token {
@@ -427,6 +427,15 @@ impl Register {
         }
     }
 
+    fn value(&self) -> u16 {
+        match self {
+            Self::Ax(v) => *v,
+            Self::Bx(v) => *v,
+            Self::Bp(v) => *v,
+            Self::Sp(s) => s.expect("stack pointer not set"),
+        }
+    }
+
     fn as_gpr(&self) -> u16 {
         match self {
             Self::Ax(v) => *v,
@@ -501,7 +510,7 @@ pub struct Vm {
 
 impl AbstractMachine for Vm {
     fn update_reg(&mut self, dst: RegisterTag, src: RegisterTag) {
-        let src = self.register_from_tag(src).as_gpr();
+        let src = self.register_from_tag(src).value();
         let dst = self.register_from_tag(dst);
         dst.update(src);
     }
@@ -619,7 +628,6 @@ impl AbstractMachine for Vm {
 
     fn call(&mut self, proc: &str) {
         self.push(self.ip);
-        self.bp.update(self.sp.as_sp().unwrap());
         self.ip = *self.symbol_table.get(proc).unwrap();
     }
 
@@ -637,8 +645,8 @@ impl AbstractMachine for Vm {
         match tag {
             RegisterTag::Ax => &mut self.ax,
             RegisterTag::Bx => &mut self.bx,
-            RegisterTag::Bp => todo!(),
-            RegisterTag::Sp => todo!(),
+            RegisterTag::Bp => &mut self.bp,
+            RegisterTag::Sp => &mut self.sp,
         }
     }
 }
@@ -710,7 +718,7 @@ impl Vm {
     fn push(&mut self, value: u16) {
         let limit = self.stack_limit - 1;
         let sp = match *self.sp.as_sp() {
-            Some(0) => panic!("stack overflow!"),
+            Some(0) => panic!("stack overflow! -- {:?}", self.stack),
             Some(sp) => {
                 *self.sp.as_mut_sp() = Some(sp - 1);
                 sp - 1
