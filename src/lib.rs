@@ -1,3 +1,4 @@
+#![deny(clippy::pedantic)]
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
@@ -122,11 +123,6 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                 if scratch.ends_with(':') {
                     scratch.pop();
                     tokens.push(Token::Label(scratch));
-                    continue;
-                }
-
-                if scratch.chars().all(|c| c.is_numeric()) {
-                    tokens.push(Token::UnsignedImm(scratch.parse::<u16>().unwrap()));
                     continue;
                 }
 
@@ -551,7 +547,7 @@ impl<H: Interrupt + Default> AbstractMachine for Vm<H> {
 
         let value = match offset {
             Some((OffsetOp::Add, n)) => self.stack[(src + *n) as usize],
-            Some((OffsetOp::Subtract, n)) => self.stack[(src + *n) as usize],
+            Some((OffsetOp::Subtract, n)) => self.stack[(src - *n) as usize],
             None => self.stack[src as usize],
         };
 
@@ -767,9 +763,9 @@ impl<H: Interrupt + Default> Vm<H> {
             RegisterTag::Bx => self.bx.full(),
             RegisterTag::Bh => self.bx.high() as u16,
             RegisterTag::Bl => self.bx.low() as u16,
-            RegisterTag::Dx => self.bx.full(),
-            RegisterTag::Dh => self.bx.high() as u16,
-            RegisterTag::Dl => self.bx.low() as u16,
+            RegisterTag::Dx => self.dx.full(),
+            RegisterTag::Dh => self.dx.high() as u16,
+            RegisterTag::Dl => self.dx.low() as u16,
             RegisterTag::Bp => self.bp,
             RegisterTag::Sp => self.sp.unwrap(),
         }
