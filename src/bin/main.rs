@@ -5,11 +5,11 @@ use std::io::stdin;
 use std::io::BufRead;
 use std::io::BufReader;
 
-use bandera::core::lex;
-use bandera::core::Dos;
-use bandera::core::Parser;
-use bandera::core::Program;
-use bandera::core::Vm;
+use bandera::lex;
+use bandera::Dos;
+use bandera::Parser;
+use bandera::Program;
+use bandera::Vm;
 
 fn parse<T: BufRead + Debug>(buf: T) -> Program {
     Parser::new(

@@ -1,8 +1,8 @@
-use bandera::core::lex;
-use bandera::core::Dos;
-use bandera::core::MachineState;
-use bandera::core::Parser;
-use bandera::core::Vm;
+use bandera::lex;
+use bandera::Dos;
+use bandera::MachineState;
+use bandera::Parser;
+use bandera::Vm;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
