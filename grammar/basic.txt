@@ -17,6 +17,7 @@
 <instr>      ::= <add>
 <instr>      ::= <call>
 <instr>      ::= <cmp>
+<instr>      ::= <int>
 <instr>      ::= <jump>
 <instr>      ::= <mov>
 <instr>      ::= <pop>
@@ -32,6 +33,8 @@
 <cmp>        ::= cmp reg signed_imm
 <cmp>        ::= cmp reg unsigned_imm
 <cmp>        ::= cmp reg reg
+
+<int>        ::= int iden
 
 <jump>       ::= jmp iden
 <jump>       ::= jne iden
