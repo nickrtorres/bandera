@@ -5,7 +5,7 @@ use std::result;
 type Result<T> = result::Result<T, Box<dyn Error>>;
 
 fn cmd(name: &str) -> Result<Output> {
-    let output = Command::new("./target/debug/main")
+    let output = Command::new("./target/debug/bandera")
         .arg(format!("./tests/asm/dos/{}", name))
         .output()?;
 
