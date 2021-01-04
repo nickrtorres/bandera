@@ -111,8 +111,6 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                 tokens.push(Token::SignedImm(buffer.parse::<i16>().unwrap()));
             }
             c => {
-                // FIXME this lexer is a bit rough at the moment. It won't parse
-                // hex at all.
                 let mut scratch = String::from(c);
                 while let Some(c) = stream.peek().copied() {
                     if c == ']' || c == '[' || c == ',' || c == ' ' || c == '\n' {
@@ -133,6 +131,12 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                     tokens.push(Token::UnsignedImm(scratch.parse::<u16>().unwrap()));
                     continue;
                 }
+
+                // Hex digits come in two forms:
+                // (1) prefixed with "0x"
+                // (2) suffixed with 'h' # NB this one seems to carry some DOS history
+                //
+                // TODO This is slow. Maaaaybe use regex here instead.
 
                 match scratch.as_str() {
                     "ax" => tokens.push(Token::Reg(RegisterTag::Ax)),
@@ -161,7 +165,22 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                     "ret" => tokens.push(Token::Ret),
                     "sub" => tokens.push(Token::Sub),
                     "word" => tokens.push(Token::Word),
-                    _ => tokens.push(Token::Iden(scratch)),
+                    s => {
+                        let is_valid_hex = |hex: &str| hex.chars().all(|c| c.is_ascii_hexdigit());
+                        if s.ends_with('h') && is_valid_hex(&s[0..s.len() - 1]) {
+                            tokens.push(Token::UnsignedImm(
+                                u16::from_str_radix(&s[0..s.len() - 1], 16).unwrap(),
+                            ));
+                        } else if s.starts_with("0x") && is_valid_hex(&s[2..s.len()]) {
+                            tokens.push(Token::UnsignedImm(
+                                u16::from_str_radix(&s[2..s.len()], 16).unwrap(),
+                            ));
+                        } else if s.chars().all(|c| c.is_ascii_digit()) {
+                            tokens.push(Token::UnsignedImm(u16::from_str_radix(s, 10).unwrap()));
+                        } else {
+                            tokens.push(Token::Iden(scratch));
+                        }
+                    }
                 }
             }
         };
@@ -298,7 +317,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn int(&mut self) {
         self.expect(Token::Int);
-        let vector = self.tokens.next().unwrap().into_iden_unchecked();
+        let vector = self.tokens.next().unwrap().into_unsigned_imm_unchecked();
         self.ops.push(Op::Int(vector));
     }
 
@@ -441,7 +460,7 @@ pub trait AbstractMachine {
         src: RegisterTag,
         offset: &Option<(OffsetOp, u16)>,
     );
-    fn interrupt(&mut self, vector: &str);
+    fn interrupt(&mut self, vector: u16);
     fn halt(&mut self);
 }
 
@@ -628,7 +647,7 @@ impl<H: interrupt::Handler + Default> AbstractMachine for Vm<H> {
         self.store(dst, value);
     }
 
-    fn interrupt(&mut self, vector: &str) {
+    fn interrupt(&mut self, vector: u16) {
         self.interrupt_handler
             .handle(vector, self.ax.high(), self.ax.low());
     }
@@ -767,7 +786,7 @@ pub enum Op {
     AddReg(RegisterTag, RegisterTag),
     Call(String),
     CmpImm(RegisterTag, u16),
-    Int(String),
+    Int(u16),
     Je(String),
     Jge(String),
     Jmp(String),
@@ -789,7 +808,7 @@ impl Op {
             Self::AddReg(dst, src) => machine.add_reg_unsigned(*dst, *src),
             Self::Call(proc) => machine.call(proc),
             Self::CmpImm(dst, src) => machine.compare_imm(*dst, *src),
-            Self::Int(interrupt) => machine.interrupt(interrupt),
+            Self::Int(interrupt) => machine.interrupt(*interrupt),
             Self::Je(label) => machine.jump_equal(label),
             Self::Jge(label) => machine.jump_gt_equal(label),
             Self::Jmp(label) => machine.unconditional_jump(label),

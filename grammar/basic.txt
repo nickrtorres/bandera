@@ -34,7 +34,10 @@
 <cmp>        ::= cmp reg unsigned_imm
 <cmp>        ::= cmp reg reg
 
-<int>        ::= int iden
+<int>        ::= int [0-9]+
+<int>        ::= int [0-9a-f]+
+<int>        ::= int 0x[0-9a-f]+
+<int>        ::= int [0-9a-f]+h
 
 <jump>       ::= jmp iden
 <jump>       ::= jne iden
