@@ -8,41 +8,25 @@ use std::io::BufReader;
 use bandera::lex;
 use bandera::Dos;
 use bandera::Parser;
-use bandera::Program;
 use bandera::Vm;
 
-fn parse<T: BufRead + Debug>(buf: T) -> Program {
-    Parser::new(
+fn run<T: BufRead + Debug>(buf: T) {
+    let program = Parser::new(
         buf.lines()
             .filter(Result::is_ok)
             .flat_map(|line| lex(line.unwrap().chars().peekable()))
             .peekable(),
     )
-    .run()
-}
+    .run();
 
-fn repl() {
-    let stdin = stdin();
-    let program = parse(stdin.lock());
-    let mut vm: Vm<Dos> = Vm::new();
-    vm.run(program).expect("uh-oh!");
-    vm.dump();
-}
-
-fn file(name: &str) {
-    let f = File::open(name).unwrap();
-    let reader = BufReader::new(f);
-    let program = parse(reader);
-    let mut vm: Vm<Dos> = Vm::new();
-    vm.run(program).expect("uh-oh!");
-    vm.dump();
+    Vm::<Dos>::new().run(program).expect("uh-oh!");
 }
 
 fn main() {
     let args = env::args().collect::<Vec<String>>();
     if args.len() == 2 {
-        file(&args[1]);
+        run(BufReader::new(File::open(&args[1]).unwrap()));
     } else {
-        repl();
+        run(stdin().lock());
     }
 }

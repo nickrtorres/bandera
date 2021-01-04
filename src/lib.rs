@@ -1,4 +1,3 @@
-#![deny(clippy::pedantic)]
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::error::Error;
