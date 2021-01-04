@@ -1,0 +1,37 @@
+Base features
+=============
+- [x] stack access by word
+- [ ] stack access by byte
+- [ ] data segments
+- [ ] loads from data segments
+- [ ] `.code` and `.data` parsing
+- [ ] mem-to-reg loads and stores
+- [ ] various missing mnemonics 
+  - [ ] multiplication and division instructions
+  - [ ] various jumps: jng, jl, etc.
+  - [ ] loop
+  - [ ] inc
+  - [ ] neg
+
+
+DOS API -- Minimal functionality. Not necessarily spec conformance.
+===================================================================
+- [ ] minimal subset of `int 21h`
+  - YES
+    - [ ] 00h program terminate
+    - [ ] 01h character input
+    - [x] 02h character output
+    - [ ] 09h display string
+    - [ ] 2ah get date
+    - [ ] 2ch get time
+    - [ ] 30h get dos version
+    - [ ] 4bh execute program
+    - [ ] 4ch terminate with return code
+    - [x] 4dh get program return code
+  - maybe
+    - [ ] 0ah buffered keyboard input
+    - [ ] 0fh open file
+    - [ ] 10h close file
+    - [ ] 21h random read
+    - [ ] 22h random write
+    - [ ] 35h get interrupt vector
