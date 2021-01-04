@@ -3,7 +3,7 @@ use std::process::exit;
 const DOS_INTERRUPT_VECTOR: u16 = 0x21;
 
 pub trait Interrupt {
-    fn handle(&self, vector: u16, ah: u8, al: u8);
+    fn handle(&self, vector: u16, ah: u8, al: u8, dl: u8);
 }
 
 pub struct Dos {}
@@ -15,13 +15,14 @@ impl Default for Dos {
 }
 
 impl Interrupt for Dos {
-    fn handle(&self, vector: u16, ah: u8, al: u8) {
+    fn handle(&self, vector: u16, ah: u8, al: u8, dl: u8) {
         if vector != DOS_INTERRUPT_VECTOR {
             return;
         }
 
         match ah {
             0x4C => exit(al as i32),
+            0x02 => print!("{}", dl as char),
             v => todo!("Unhandled interrupt => 0x{:x}", v),
         }
     }

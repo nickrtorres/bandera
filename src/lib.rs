@@ -143,6 +143,9 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                     "bx" => tokens.push(Token::Reg(RegisterTag::Bx)),
                     "bh" => tokens.push(Token::Reg(RegisterTag::Bh)),
                     "bl" => tokens.push(Token::Reg(RegisterTag::Bl)),
+                    "dx" => tokens.push(Token::Reg(RegisterTag::Dx)),
+                    "dh" => tokens.push(Token::Reg(RegisterTag::Dh)),
+                    "dl" => tokens.push(Token::Reg(RegisterTag::Dl)),
                     "bp" => tokens.push(Token::Reg(RegisterTag::Bp)),
                     "sp" => tokens.push(Token::Reg(RegisterTag::Sp)),
                     "add" => tokens.push(Token::Add),
@@ -427,6 +430,9 @@ pub enum RegisterTag {
     Bx,
     Bh,
     Bl,
+    Dx,
+    Dh,
+    Dl,
     Bp,
     Sp,
 }
@@ -505,6 +511,7 @@ impl FullViewRegister {
 pub struct Vm<H: Interrupt + Default> {
     ax: FullViewRegister,
     bx: FullViewRegister,
+    dx: FullViewRegister,
     bp: u16,
     cf: u8,
     af: u8,
@@ -647,7 +654,7 @@ impl<H: Interrupt + Default> AbstractMachine for Vm<H> {
 
     fn interrupt(&mut self, vector: u16) {
         self.interrupt_handler
-            .handle(vector, self.ax.high(), self.ax.low());
+            .handle(vector, self.ax.high(), self.ax.low(), self.dx.low());
     }
 
     fn halt(&mut self) {
@@ -666,6 +673,7 @@ impl<H: Interrupt + Default> Vm<H> {
         Vm {
             ax: FullViewRegister::new(),
             bx: FullViewRegister::new(),
+            dx: FullViewRegister::new(),
             cf: 0,
             af: 0,
             sf: 0,
@@ -759,6 +767,9 @@ impl<H: Interrupt + Default> Vm<H> {
             RegisterTag::Bx => self.bx.full(),
             RegisterTag::Bh => self.bx.high() as u16,
             RegisterTag::Bl => self.bx.low() as u16,
+            RegisterTag::Dx => self.bx.full(),
+            RegisterTag::Dh => self.bx.high() as u16,
+            RegisterTag::Dl => self.bx.low() as u16,
             RegisterTag::Bp => self.bp,
             RegisterTag::Sp => self.sp.unwrap(),
         }
@@ -772,6 +783,9 @@ impl<H: Interrupt + Default> Vm<H> {
             RegisterTag::Bx => self.bx.set_full(value),
             RegisterTag::Bh => self.bx.set_high(value.try_into().unwrap()),
             RegisterTag::Bl => self.bx.set_low(value.try_into().unwrap()),
+            RegisterTag::Dx => self.dx.set_full(value),
+            RegisterTag::Dh => self.dx.set_high(value.try_into().unwrap()),
+            RegisterTag::Dl => self.dx.set_low(value.try_into().unwrap()),
             RegisterTag::Bp => self.bp = value,
             RegisterTag::Sp => self.sp = Some(value),
         }
