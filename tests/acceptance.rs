@@ -160,3 +160,12 @@ fn split_register() -> Result<()> {
     assert_eq!(actual, expected);
     Ok(())
 }
+
+#[test]
+fn variables() -> Result<()> {
+    let actual = run("variables.asm")?;
+    let expected = MachineState { ax: 0xCDAB, bx: 0 };
+
+    assert_eq!(actual, expected);
+    Ok(())
+}

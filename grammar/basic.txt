@@ -1,60 +1,74 @@
-<program>    ::= <stmt_list> <end> halt
+<program>             ::= <data_segment> <code_segment>
+<program>             ::= <code_segment>
 
-<stmt_list>  ::= <procedure> <instr_list>
-<stmt_list>  ::= <instr_list>
+<code_segment>        ::= .code <stmt_list> <end> halt
 
-<end>        ::= end iden
+<data_segment>        ::= .data <data_declaration_list>
+
+<data_directive_list> ::= <data_directive> <data_directive_list>
+<data_directive_list> ::= <data_directive>
+
+<data_directive>      ::= iden DB <iden_list>
+
+<iden_list>           ::= iden,  <iden_list>
+<iden_list>           ::= iden
+
+<stmt_list>           ::= <procedure> <instr_list>
+<stmt_list>           ::= <instr_list>
+
+<end>                 ::= end iden
 
 # NB: `ret` without an integer is syntactic sugar for `ret 0`.
-<procedure>  ::= iden proc <instr_list> ret iden endp
-<procedure>  ::= iden proc <instr_list> ret [0-9]+ iden endp
+<procedure>           ::= iden proc <instr_list> ret iden endp
+<procedure>           ::= iden proc <instr_list> ret [0-9]+ iden endp
 
-<instr_list> ::= <label> <instr>
-<instr_list> ::= <label> <instr> <instr_list>
-<instr_list> ::= <instr> <instr_list>
-<instr_list> ::= <instr>
+<instr_list>          ::= <label> <instr>
+<instr_list>          ::= <label> <instr> <instr_list>
+<instr_list>          ::= <instr> <instr_list>
+<instr_list>          ::= <instr>
 
-<instr>      ::= <add>
-<instr>      ::= <call>
-<instr>      ::= <cmp>
-<instr>      ::= <int>
-<instr>      ::= <jump>
-<instr>      ::= <mov>
-<instr>      ::= <pop>
-<instr>      ::= <push>
-<instr>      ::= <sub>
+<instr>               ::= <add>
+<instr>               ::= <call>
+<instr>               ::= <cmp>
+<instr>               ::= <int>
+<instr>               ::= <jump>
+<instr>               ::= <mov>
+<instr>               ::= <pop>
+<instr>               ::= <push>
+<instr>               ::= <sub>
 
-<add>        ::= add reg unsigned_imm
-<add>        ::= add reg signed_imm
-<add>        ::= add reg reg
+<add>                 ::= add reg, unsigned_imm
+<add>                 ::= add reg, signed_imm
+<add>                 ::= add reg, reg
 
-<call>       ::= call iden
+<call>                ::= call iden
 
-<cmp>        ::= cmp reg signed_imm
-<cmp>        ::= cmp reg unsigned_imm
-<cmp>        ::= cmp reg reg
+<cmp>                 ::= cmp reg, signed_imm
+<cmp>                 ::= cmp reg, unsigned_imm
+<cmp>                 ::= cmp reg, reg
 
-<int>        ::= int [0-9]+
-<int>        ::= int [0-9a-f]+
-<int>        ::= int 0x[0-9a-f]+
-<int>        ::= int [0-9a-f]+h
+<int>                 ::= int [0-9]+
+<int>                 ::= int [0-9a-f]+
+<int>                 ::= int 0x[0-9a-f]+
+<int>                 ::= int [0-9a-f]+h
 
-<jump>       ::= jmp iden
-<jump>       ::= jne iden
-<jump>       ::= je iden
-<jump>       ::= jge iden
+<jump>                ::= jmp iden
+<jump>                ::= jne iden
+<jump>                ::= je iden
+<jump>                ::= jge iden
 
-<mov>        ::= mov reg unsigned_imm
-<mov>        ::= mov reg signed_imm
-<mov>        ::= mov reg reg
-<mov>        ::= mov reg mem
+<mov>                 ::= mov reg, unsigned_imm
+<mov>                 ::= mov reg, signed_imm
+<mov>                 ::= mov reg, reg
+<mov>                 ::= mov reg, mem
+<mov>                 ::= mov reg, var
 
-<pop>        ::= pop reg
+<pop>                 ::= pop reg
 
-<push>       ::= push reg
+<push>                ::= push reg
 
-<sub>        ::= sub reg unsigned_imm
+<sub>                 ::= sub reg, unsigned_imm
 
-<mem>        ::= word ptr [ reg ]
-<mem>        ::= word ptr [ reg + offset ]
-<mem>        ::= word ptr [ reg - offset ]
+<mem>                 ::= word ptr [ reg ]
+<mem>                 ::= word ptr [ reg + offset ]
+<mem>                 ::= word ptr [ reg - offset ]

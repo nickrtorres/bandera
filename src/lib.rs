@@ -19,6 +19,7 @@ pub enum Token {
     Add,
     Call,
     Cmp,
+    Comma,
     End,
     Endp,
     Iden(String),
@@ -43,6 +44,8 @@ pub enum Token {
     UnsignedImm(u16),
     Word,
     Int,
+    Db,
+    DataSegment,
 }
 
 impl Token {
@@ -79,7 +82,8 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
     let mut tokens = Vec::default();
     while let Some(c) = stream.next() {
         match c {
-            '\n' | ',' | ' ' => {}
+            '\n' | ' ' => {}
+            ',' => tokens.push(Token::Comma),
             '+' => tokens.push(Token::Plus),
             '[' => tokens.push(Token::LeftBracket),
             ']' => tokens.push(Token::RightBracket),
@@ -119,6 +123,9 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                     scratch.push(c);
                 }
 
+                // TODO fail if string is not ascii
+                scratch.make_ascii_lowercase();
+
                 if scratch.ends_with(':') {
                     scratch.pop();
                     tokens.push(Token::Label(scratch));
@@ -143,9 +150,11 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                     "dl" => tokens.push(Token::Reg(RegisterTag::Dl)),
                     "bp" => tokens.push(Token::Reg(RegisterTag::Bp)),
                     "sp" => tokens.push(Token::Reg(RegisterTag::Sp)),
+                    ".data" => tokens.push(Token::DataSegment),
                     "add" => tokens.push(Token::Add),
                     "call" => tokens.push(Token::Call),
                     "cmp" => tokens.push(Token::Cmp),
+                    "db" => tokens.push(Token::Db),
                     "end" => tokens.push(Token::End),
                     "endp" => tokens.push(Token::Endp),
                     "int" => tokens.push(Token::Int),
@@ -185,14 +194,24 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
     tokens
 }
 
+#[derive(Debug, Clone)]
+enum DefinedByte {
+    Byte(u8),
+    List(Box<DefinedByte>),
+    String(String),
+    Unitialized, //< ? character
+}
+
 type SymbolTable = HashMap<String, u16>;
+type DataTable = HashMap<String, DefinedByte>;
 
 #[derive(Debug)]
-pub struct Program(SymbolTable, Vec<Op>);
+pub struct Program(SymbolTable, DataTable, Vec<Op>);
 
 pub struct Parser<I: Iterator<Item = Token> + Debug> {
     tokens: Peekable<I>,
     symbol_table: SymbolTable,
+    data_table: DataTable,
     pending_symbol: Option<String>,
     ops: Vec<Op>,
 }
@@ -202,6 +221,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         Parser {
             tokens,
             symbol_table: SymbolTable::default(),
+            data_table: DataTable::default(),
             pending_symbol: None,
             ops: Vec::default(),
         }
@@ -223,9 +243,12 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.expect(Token::Mov);
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
 
+        self.expect(Token::Comma);
+
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::MovReg(dst, src)),
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::MovImm(dst, src)),
+            Some(Token::Iden(s)) => self.ops.push(Op::MovVar(dst, s)),
             Some(Token::Word) => {
                 self.expect(Token::Ptr);
                 self.expect(Token::LeftBracket);
@@ -257,6 +280,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     fn add(&mut self) {
         self.expect(Token::Add);
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        self.expect(Token::Comma);
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::AddReg(dst, src)),
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::AddImmUnsigned(dst, src)),
@@ -284,6 +308,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     fn cmp(&mut self) {
         self.expect(Token::Cmp);
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        self.expect(Token::Comma);
         match self.tokens.next() {
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::CmpImm(dst, src as u16)),
             c => todo!("{}", format!("{:?}", c)),
@@ -305,6 +330,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     fn sub(&mut self) {
         self.expect(Token::Sub);
         let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        self.expect(Token::Comma);
         match self.tokens.next() {
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::SubImm(dst, src)),
             _ => panic!("invalid sub"),
@@ -409,11 +435,45 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.symbol_table.insert(ENTRY_POINT.to_owned(), offset);
     }
 
+    fn data_directive(&mut self) {
+        let var = self.tokens.next().unwrap().into_iden_unchecked();
+        self.expect(Token::Db);
+
+        // TODO exhaust all DefinedByte:: type constructors here.
+        self.data_table.insert(
+            var,
+            DefinedByte::Byte(
+                self.tokens
+                    .next()
+                    .unwrap()
+                    .into_unsigned_imm_unchecked()
+                    .try_into()
+                    .unwrap(),
+            ),
+        );
+    }
+
+    fn data_directive_list(&mut self) {
+        if let Some(Token::Iden(_)) = self.tokens.peek() {
+            self.data_directive();
+            self.data_directive_list();
+        }
+    }
+
+    fn data_segment(&mut self) {
+        self.expect(Token::DataSegment);
+        self.data_directive_list();
+    }
+
     fn program(mut self) -> Program {
+        if let Some(Token::DataSegment) = self.tokens.peek() {
+            self.data_segment();
+        }
+
         self.stmt_list();
         self.end();
         self.ops.push(Op::Halt);
-        Program(self.symbol_table, self.ops)
+        Program(self.symbol_table, self.data_table, self.ops)
     }
 }
 
@@ -459,6 +519,7 @@ pub trait AbstractMachine {
         src: RegisterTag,
         offset: &Option<(OffsetOp, u16)>,
     );
+    fn update_reg_from_var(&mut self, dst: RegisterTag, var: &str);
     fn interrupt(&mut self, vector: u16);
     fn halt(&mut self);
 }
@@ -520,6 +581,7 @@ pub struct Vm<H: Interrupt + Default> {
     ip: u16,
     sp: Option<u16>,
     symbol_table: SymbolTable,
+    data_table: DataTable,
     stack: Vec<u16>,
     stack_limit: u16,
     interrupt_handler: H,
@@ -551,6 +613,14 @@ impl<H: Interrupt + Default> AbstractMachine for Vm<H> {
         };
 
         self.update_imm(dst, value);
+    }
+
+    fn update_reg_from_var(&mut self, dst: RegisterTag, var: &str) {
+        // Audit cloning here
+        match self.data_table.get(var).cloned() {
+            Some(DefinedByte::Byte(src)) => self.store(dst, src as u16),
+            _ => todo!(),
+        }
     }
 
     // TODO:
@@ -678,7 +748,8 @@ impl<H: Interrupt + Default> Vm<H> {
             ip: 0,
             sp: None,
             bp: 0,
-            symbol_table: HashMap::default(),
+            symbol_table: SymbolTable::default(),
+            data_table: DataTable::default(),
             stack: vec![0; STACK_SIZE as usize],
             stack_limit: STACK_SIZE,
             interrupt_handler: H::default(),
@@ -687,8 +758,9 @@ impl<H: Interrupt + Default> Vm<H> {
     }
 
     pub fn run(&mut self, program: Program) -> Result<MachineState, Box<dyn Error>> {
-        let Program(symbols, instructions) = program;
+        let Program(symbols, data, instructions) = program;
         self.symbol_table = symbols;
+        self.data_table = data;
         self.ip = *self.symbol_table.get(ENTRY_POINT).unwrap();
 
         while !self.halt {
@@ -800,6 +872,7 @@ pub enum Op {
     Jne(String),
     MovImm(RegisterTag, u16),
     MovMem(RegisterTag, RegisterTag, Option<(OffsetOp, u16)>),
+    MovVar(RegisterTag, String),
     MovReg(RegisterTag, RegisterTag),
     Pop(RegisterTag),
     Push(RegisterTag),
@@ -822,6 +895,7 @@ impl Op {
             Self::Jne(label) => machine.jump_not_equal(label),
             Self::MovImm(dst, src) => machine.update_imm(*dst, *src),
             Self::MovMem(dst, src, offset) => machine.update_reg_from_mem(*dst, *src, offset),
+            Self::MovVar(dst, var) => machine.update_reg_from_var(*dst, var),
             Self::MovReg(dst, src) => machine.update_reg(*dst, *src),
             Self::Pop(dst) => machine.pop_reg(*dst),
             Self::Push(src) => machine.push_reg(*src),
@@ -841,6 +915,7 @@ mod tests {
         let mut tokens = lex("mov ax, 42".chars().peekable()).into_iter();
         assert_eq!(Some(Token::Mov), tokens.next());
         assert_eq!(Some(Token::Reg(RegisterTag::Ax)), tokens.next());
+        assert_eq!(Some(Token::Comma), tokens.next());
         assert_eq!(Some(Token::UnsignedImm(42)), tokens.next());
         assert_eq!(None, tokens.next());
     }
@@ -850,6 +925,7 @@ mod tests {
         let mut tokens = lex("mov ax, 42 ; don't care".chars().peekable()).into_iter();
         assert_eq!(Some(Token::Mov), tokens.next());
         assert_eq!(Some(Token::Reg(RegisterTag::Ax)), tokens.next());
+        assert_eq!(Some(Token::Comma), tokens.next());
         assert_eq!(Some(Token::UnsignedImm(42)), tokens.next());
         assert_eq!(None, tokens.next());
     }
@@ -859,7 +935,7 @@ mod tests {
         let tokens = lex("main:\nmov ax, 42\nend main".chars().peekable()).into_iter();
         let mut ops = Parser::new(tokens.into_iter().peekable())
             .run()
-            .1
+            .2
             .into_iter();
         assert_eq!(Some(Op::MovImm(RegisterTag::Ax, 42)), ops.next());
         assert_eq!(Some(Op::Halt), ops.next());
@@ -872,15 +948,17 @@ mod tests {
             Token::Label(String::from("main")),
             Token::Add, // Op 0
             Token::Reg(RegisterTag::Ax),
+            Token::Comma,
             Token::Reg(RegisterTag::Bx),
             Token::Label("Foo".to_owned()),
             Token::Add, // Op 1
             Token::Reg(RegisterTag::Ax),
+            Token::Comma,
             Token::Reg(RegisterTag::Ax),
             Token::End,
             Token::Iden(String::from("main")),
         ];
-        let Program(symbols, _) = Parser::new(tokens.into_iter().peekable()).run();
+        let Program(symbols, _, _) = Parser::new(tokens.into_iter().peekable()).run();
         assert_eq!(symbols.get("Foo"), Some(&(1)));
     }
 
