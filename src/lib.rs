@@ -126,6 +126,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                 let mut scratch = String::new();
                 while let Some(c) = stream.peek().copied() {
                     if c == '\'' {
+                        stream.next().unwrap(); // consume the '
                         break;
                     } else {
                         scratch.push(stream.next().unwrap());
