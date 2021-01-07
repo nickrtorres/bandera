@@ -20,9 +20,12 @@ pub enum Token {
     Call,
     Cmp,
     Comma,
+    DataSegment,
+    Db,
     End,
     Endp,
     Iden(String),
+    Int,
     Je,
     Jge,
     Jmp,
@@ -36,16 +39,15 @@ pub enum Token {
     Proc,
     Ptr,
     Push,
+    QuestionMark,
     Reg(RegisterTag),
     Ret,
     RightBracket,
     SignedImm(i16),
+    String(String),
     Sub,
     UnsignedImm(u16),
     Word,
-    Int,
-    Db,
-    DataSegment,
 }
 
 impl Token {
@@ -87,6 +89,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
             '+' => tokens.push(Token::Plus),
             '[' => tokens.push(Token::LeftBracket),
             ']' => tokens.push(Token::RightBracket),
+            '?' => tokens.push(Token::QuestionMark),
             ';' => {
                 while let Some(c) = stream.next() {
                     if c == '\n' {
@@ -112,10 +115,22 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                 }
                 tokens.push(Token::SignedImm(buffer.parse::<i16>().unwrap()));
             }
+            '\'' => {
+                let mut scratch = String::new();
+                while let Some(c) = stream.peek().copied() {
+                    if c == '\'' {
+                        break;
+                    } else {
+                        scratch.push(stream.next().unwrap());
+                    }
+                }
+
+                tokens.push(Token::String(scratch));
+            }
             c => {
                 let mut scratch = String::from(c);
                 while let Some(c) = stream.peek().copied() {
-                    if c == ']' || c == '[' || c == ',' || c == ' ' || c == '\n' {
+                    if c == ',' || c == ']' || c == '[' || c == ',' || c == ' ' || c == '\n' {
                         break;
                     }
 
@@ -196,8 +211,13 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
 
 #[derive(Debug, Clone)]
 enum DefinedByte {
+    Sequence(Vec<ByteType>),
+    Scalar(ByteType),
+}
+
+#[derive(Debug, Clone)]
+enum ByteType {
     Byte(u8),
-    List(Box<DefinedByte>),
     String(String),
     Unitialized, //< ? character
 }
@@ -440,17 +460,58 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.expect(Token::Db);
 
         // TODO exhaust all DefinedByte:: type constructors here.
-        self.data_table.insert(
-            var,
-            DefinedByte::Byte(
-                self.tokens
-                    .next()
-                    .unwrap()
-                    .into_unsigned_imm_unchecked()
-                    .try_into()
-                    .unwrap(),
-            ),
-        );
+        let byte = self.tokens.next().unwrap();
+
+        if let Some(Token::Comma) = self.tokens.peek() {
+            //
+            // At this point the parser has encountered a sequence of bytes
+            // defined by the programmer, e.g.
+            // MY_VAR     DB    42, 100, 1000
+            //
+            // Our state at this point looks something like this.
+            // MY_VAR     DB    42 , 100 , 1000
+            //                   ^ ^
+            //                   | |
+            //                   + |
+            //                  /  +--- self.tokens.next()
+            //               byte
+            //
+            let mut sequence = Vec::new();
+            match byte {
+                Token::String(s) => sequence.push(ByteType::String(s)),
+                Token::QuestionMark => sequence.push(ByteType::Unitialized),
+                Token::UnsignedImm(n) => sequence.push(ByteType::Byte(n.try_into().unwrap())),
+                t => todo!("Unhandled token -- {:?}", t),
+            };
+
+            loop {
+                self.expect(Token::Comma);
+
+                match self.tokens.next().unwrap() {
+                    Token::String(s) => sequence.push(ByteType::String(s)),
+                    Token::QuestionMark => sequence.push(ByteType::Unitialized),
+                    Token::UnsignedImm(n) => sequence.push(ByteType::Byte(n.try_into().unwrap())),
+                    _ => todo!(),
+                };
+
+                if let Some(Token::Comma) = self.tokens.peek() {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+
+            self.data_table.insert(var, DefinedByte::Sequence(sequence));
+        } else {
+            let byte = match byte {
+                Token::String(s) => ByteType::String(s),
+                Token::QuestionMark => ByteType::Unitialized,
+                Token::UnsignedImm(n) => ByteType::Byte(n.try_into().unwrap()),
+                _ => todo!(),
+            };
+
+            self.data_table.insert(var, DefinedByte::Scalar(byte));
+        }
     }
 
     fn data_directive_list(&mut self) {
@@ -618,7 +679,8 @@ impl<H: Interrupt + Default> AbstractMachine for Vm<H> {
     fn update_reg_from_var(&mut self, dst: RegisterTag, var: &str) {
         // Audit cloning here
         match self.data_table.get(var).cloned() {
-            Some(DefinedByte::Byte(src)) => self.store(dst, src as u16),
+            Some(DefinedByte::Scalar(ByteType::Byte(src))) => self.store(dst, src as u16),
+            Some(DefinedByte::Sequence(v)) => eprintln!("{:?}", v),
             _ => todo!(),
         }
     }
