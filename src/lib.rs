@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fmt::Debug;
@@ -220,6 +221,20 @@ enum ByteType {
     Byte(u8),
     String(String),
     Unitialized, //< ? character
+}
+
+impl TryFrom<Token> for ByteType {
+    // TODO update this to a BanderaError when error handling is added.
+    type Error = String;
+
+    fn try_from(value: Token) -> Result<Self, Self::Error> {
+        match value {
+            Token::String(s) => Ok(ByteType::String(s)),
+            Token::QuestionMark => Ok(ByteType::Unitialized),
+            Token::UnsignedImm(n) => Ok(ByteType::Byte(n.try_into().unwrap())),
+            c => return Err(format!("Error -- cannot convert {:?} into a ByteType", c)),
+        }
+    }
 }
 
 type SymbolTable = HashMap<String, u16>;
@@ -460,7 +475,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.expect(Token::Db);
 
         // TODO exhaust all DefinedByte:: type constructors here.
-        let byte = self.tokens.next().unwrap();
+        let byte = self.tokens.next().unwrap().try_into().unwrap();
 
         if let Some(Token::Comma) = self.tokens.peek() {
             //
@@ -477,23 +492,12 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
             //               byte
             //
             let mut sequence = Vec::new();
-            match byte {
-                Token::String(s) => sequence.push(ByteType::String(s)),
-                Token::QuestionMark => sequence.push(ByteType::Unitialized),
-                Token::UnsignedImm(n) => sequence.push(ByteType::Byte(n.try_into().unwrap())),
-                t => todo!("Unhandled token -- {:?}", t),
-            };
+            sequence.push(byte);
 
             loop {
                 self.expect(Token::Comma);
 
-                match self.tokens.next().unwrap() {
-                    Token::String(s) => sequence.push(ByteType::String(s)),
-                    Token::QuestionMark => sequence.push(ByteType::Unitialized),
-                    Token::UnsignedImm(n) => sequence.push(ByteType::Byte(n.try_into().unwrap())),
-                    _ => todo!(),
-                };
-
+                sequence.push(self.tokens.next().unwrap().try_into().unwrap());
                 if let Some(Token::Comma) = self.tokens.peek() {
                     continue;
                 } else {
@@ -503,13 +507,6 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
             self.data_table.insert(var, DefinedByte::Sequence(sequence));
         } else {
-            let byte = match byte {
-                Token::String(s) => ByteType::String(s),
-                Token::QuestionMark => ByteType::Unitialized,
-                Token::UnsignedImm(n) => ByteType::Byte(n.try_into().unwrap()),
-                _ => todo!(),
-            };
-
             self.data_table.insert(var, DefinedByte::Scalar(byte));
         }
     }
