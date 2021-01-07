@@ -282,7 +282,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn mov(&mut self) {
         self.expect(Token::Mov);
-        let dst = self.tokens.next().unwrap().try_into().unwrap();
+        let dst = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
 
         self.expect(Token::Comma);
 
@@ -320,7 +320,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn add(&mut self) {
         self.expect(Token::Add);
-        let dst = self.tokens.next().unwrap().try_into().unwrap();
+        let dst = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
         self.expect(Token::Comma);
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::AddReg(dst, src)),
@@ -336,19 +336,18 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn jump(&mut self, j: Token, label: Token) {
-        let label = label.try_into().unwrap();
         match j {
-            Token::Jmp => self.ops.push(Op::Jmp(label)),
-            Token::Jne => self.ops.push(Op::Jne(label)),
-            Token::Jge => self.ops.push(Op::Jge(label)),
-            Token::Je => self.ops.push(Op::Je(label)),
+            Token::Jmp => self.ops.push(Op::Jmp(label.try_into().unwrap())),
+            Token::Jne => self.ops.push(Op::Jne(label.try_into().unwrap())),
+            Token::Jge => self.ops.push(Op::Jge(label.try_into().unwrap())),
+            Token::Je => self.ops.push(Op::Je(label.try_into().unwrap())),
             _ => panic!("expected jump not => {:?}", j),
         }
     }
 
     fn cmp(&mut self) {
         self.expect(Token::Cmp);
-        let dst = self.tokens.next().unwrap().try_into().unwrap();
+        let dst = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
         self.expect(Token::Comma);
         match self.tokens.next() {
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::CmpImm(dst, src as u16)),
@@ -358,19 +357,19 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn push(&mut self) {
         self.expect(Token::Push);
-        let src = self.tokens.next().unwrap().try_into().unwrap();
+        let src = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
         self.ops.push(Op::Push(src));
     }
 
     fn pop(&mut self) {
         self.expect(Token::Pop);
-        let src = self.tokens.next().unwrap().try_into().unwrap();
+        let src = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
         self.ops.push(Op::Pop(src));
     }
 
     fn sub(&mut self) {
         self.expect(Token::Sub);
-        let dst = self.tokens.next().unwrap().try_into().unwrap();
+        let dst = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
         self.expect(Token::Comma);
         match self.tokens.next() {
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::SubImm(dst, src)),
@@ -380,7 +379,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn int(&mut self) {
         self.expect(Token::Int);
-        let vector = self.tokens.next().unwrap().try_into().unwrap();
+        let vector = u16::try_from(self.tokens.next().unwrap()).unwrap();
         self.ops.push(Op::Int(vector));
     }
 
@@ -410,7 +409,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     // TODO clean this up
     fn label(&mut self) {
-        let iden = self.tokens.next().unwrap().try_into().unwrap();
+        let iden = String::try_from(self.tokens.next().unwrap()).unwrap();
         assert!(self.pending_symbol.is_none());
         self.pending_symbol = Some(iden);
     }
@@ -437,7 +436,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn procedure(&mut self) {
         // TODO add a declare / define symbol methods
-        let iden = self.tokens.next().unwrap().try_into().unwrap();
+        let iden = String::try_from(self.tokens.next().unwrap()).unwrap();
         assert!(self.pending_symbol.is_none());
         self.pending_symbol = Some(iden);
 
@@ -471,18 +470,16 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn end(&mut self) {
         self.expect(Token::End);
-        let symbol: String = self.tokens.next().unwrap().try_into().unwrap();
+        let symbol = String::try_from(self.tokens.next().unwrap()).unwrap();
         let offset = *self.symbol_table.get(&symbol).unwrap();
         self.symbol_table.insert(ENTRY_POINT.to_owned(), offset);
     }
 
     fn data_directive(&mut self) {
-        let var = self.tokens.next().unwrap().try_into().unwrap();
+        let var = String::try_from(self.tokens.next().unwrap()).unwrap();
         self.expect(Token::Db);
 
-        // TODO exhaust all DefinedByte:: type constructors here.
-        let byte = self.tokens.next().unwrap().try_into().unwrap();
-
+        let byte = ByteType::try_from(self.tokens.next().unwrap()).unwrap();
         if let Some(Token::Comma) = self.tokens.peek() {
             //
             // At this point the parser has encountered a sequence of bytes
