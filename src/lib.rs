@@ -51,32 +51,38 @@ pub enum Token {
     Word,
 }
 
-impl Token {
-    fn into_reg_unchecked(self) -> RegisterTag {
-        match self {
-            Self::Reg(r) => r,
-            c => panic!("{:?} -- not a register!", c),
+impl TryFrom<Token> for RegisterTag {
+    // TODO update this to a BanderaError when error handling is added.
+    type Error = String;
+
+    fn try_from(value: Token) -> Result<Self, Self::Error> {
+        match value {
+            Token::Reg(r) => Ok(r),
+            c => Err(format!("{:?} -- not a register!", c)),
         }
     }
+}
 
-    fn into_iden_unchecked(self) -> String {
-        match self {
-            Self::Iden(i) => i,
-            c => panic!("{:?} -- not an identifier", c),
+impl TryFrom<Token> for String {
+    // TODO update this to a BanderaError when error handling is added.
+    type Error = String;
+
+    fn try_from(value: Token) -> Result<Self, Self::Error> {
+        match value {
+            Token::Label(s) | Token::Iden(s) => Ok(s),
+            c => Err(format!("{:?} -- not a string!", c)),
         }
     }
+}
 
-    fn into_label_unchecked(self) -> String {
-        match self {
-            Self::Label(s) => s,
-            c => panic!("{:?} -- not a label", c),
-        }
-    }
+impl TryFrom<Token> for u16 {
+    // TODO update this to a BanderaError when error handling is added.
+    type Error = String;
 
-    fn into_unsigned_imm_unchecked(self) -> u16 {
-        match self {
-            Self::UnsignedImm(s) => s,
-            c => panic!("{:?} -- not an unsigned immediate", c),
+    fn try_from(value: Token) -> Result<Self, Self::Error> {
+        match value {
+            Token::UnsignedImm(n) => Ok(n),
+            c => Err(format!("{:?} -- not an unsigned immediate", c)),
         }
     }
 }
@@ -232,7 +238,7 @@ impl TryFrom<Token> for ByteType {
             Token::String(s) => Ok(ByteType::String(s)),
             Token::QuestionMark => Ok(ByteType::Unitialized),
             Token::UnsignedImm(n) => Ok(ByteType::Byte(n.try_into().unwrap())),
-            c => return Err(format!("Error -- cannot convert {:?} into a ByteType", c)),
+            c => Err(format!("Error -- cannot convert {:?} into a ByteType", c)),
         }
     }
 }
@@ -276,7 +282,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn mov(&mut self) {
         self.expect(Token::Mov);
-        let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        let dst = self.tokens.next().unwrap().try_into().unwrap();
 
         self.expect(Token::Comma);
 
@@ -288,17 +294,17 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
                 self.expect(Token::Ptr);
                 self.expect(Token::LeftBracket);
 
-                let src = self.tokens.next().unwrap().into_reg_unchecked();
+                let src = self.tokens.next().unwrap().try_into().unwrap();
                 let offset = match self.tokens.peek() {
                     Some(Token::Plus) => {
                         self.expect(Token::Plus);
-                        let offset = self.tokens.next().unwrap().into_unsigned_imm_unchecked();
+                        let offset: u16 = self.tokens.next().unwrap().try_into().unwrap();
                         assert_eq!(0, offset % 2);
                         Some((OffsetOp::Add, offset / 2))
                     }
                     Some(Token::Minus) => {
                         self.expect(Token::Minus);
-                        let offset = self.tokens.next().unwrap().into_unsigned_imm_unchecked();
+                        let offset: u16 = self.tokens.next().unwrap().try_into().unwrap();
                         assert_eq!(0, offset % 2);
                         Some((OffsetOp::Subtract, offset / 2))
                     }
@@ -314,7 +320,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn add(&mut self) {
         self.expect(Token::Add);
-        let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        let dst = self.tokens.next().unwrap().try_into().unwrap();
         self.expect(Token::Comma);
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::AddReg(dst, src)),
@@ -325,12 +331,12 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn call(&mut self) {
         self.expect(Token::Call);
-        let proc = self.tokens.next().unwrap().into_iden_unchecked();
+        let proc = self.tokens.next().unwrap().try_into().unwrap();
         self.ops.push(Op::Call(proc));
     }
 
     fn jump(&mut self, j: Token, label: Token) {
-        let label = label.into_iden_unchecked();
+        let label = label.try_into().unwrap();
         match j {
             Token::Jmp => self.ops.push(Op::Jmp(label)),
             Token::Jne => self.ops.push(Op::Jne(label)),
@@ -342,7 +348,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn cmp(&mut self) {
         self.expect(Token::Cmp);
-        let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        let dst = self.tokens.next().unwrap().try_into().unwrap();
         self.expect(Token::Comma);
         match self.tokens.next() {
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::CmpImm(dst, src as u16)),
@@ -352,19 +358,19 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn push(&mut self) {
         self.expect(Token::Push);
-        let src = self.tokens.next().unwrap().into_reg_unchecked();
+        let src = self.tokens.next().unwrap().try_into().unwrap();
         self.ops.push(Op::Push(src));
     }
 
     fn pop(&mut self) {
         self.expect(Token::Pop);
-        let src = self.tokens.next().unwrap().into_reg_unchecked();
+        let src = self.tokens.next().unwrap().try_into().unwrap();
         self.ops.push(Op::Pop(src));
     }
 
     fn sub(&mut self) {
         self.expect(Token::Sub);
-        let dst = self.tokens.next().unwrap().into_reg_unchecked();
+        let dst = self.tokens.next().unwrap().try_into().unwrap();
         self.expect(Token::Comma);
         match self.tokens.next() {
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::SubImm(dst, src)),
@@ -374,7 +380,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn int(&mut self) {
         self.expect(Token::Int);
-        let vector = self.tokens.next().unwrap().into_unsigned_imm_unchecked();
+        let vector = self.tokens.next().unwrap().try_into().unwrap();
         self.ops.push(Op::Int(vector));
     }
 
@@ -404,7 +410,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     // TODO clean this up
     fn label(&mut self) {
-        let iden = self.tokens.next().unwrap().into_label_unchecked();
+        let iden = self.tokens.next().unwrap().try_into().unwrap();
         assert!(self.pending_symbol.is_none());
         self.pending_symbol = Some(iden);
     }
@@ -431,7 +437,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn procedure(&mut self) {
         // TODO add a declare / define symbol methods
-        let iden = self.tokens.next().unwrap().into_iden_unchecked();
+        let iden = self.tokens.next().unwrap().try_into().unwrap();
         assert!(self.pending_symbol.is_none());
         self.pending_symbol = Some(iden);
 
@@ -465,13 +471,13 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn end(&mut self) {
         self.expect(Token::End);
-        let symbol = self.tokens.next().unwrap().into_iden_unchecked();
+        let symbol: String = self.tokens.next().unwrap().try_into().unwrap();
         let offset = *self.symbol_table.get(&symbol).unwrap();
         self.symbol_table.insert(ENTRY_POINT.to_owned(), offset);
     }
 
     fn data_directive(&mut self) {
-        let var = self.tokens.next().unwrap().into_iden_unchecked();
+        let var = self.tokens.next().unwrap().try_into().unwrap();
         self.expect(Token::Db);
 
         // TODO exhaust all DefinedByte:: type constructors here.
