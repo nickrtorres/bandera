@@ -336,13 +336,13 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.ops.push(Op::Call(proc));
     }
 
-    fn jump(&mut self, j: Token, label: Token) {
-        match j {
+    fn jump(&mut self, jmp_type: Token, label: Token) {
+        match jmp_type {
             Token::Jmp => self.ops.push(Op::Jmp(label.try_into().unwrap())),
             Token::Jne => self.ops.push(Op::Jne(label.try_into().unwrap())),
             Token::Jge => self.ops.push(Op::Jge(label.try_into().unwrap())),
             Token::Je => self.ops.push(Op::Je(label.try_into().unwrap())),
-            _ => panic!("expected jump not => {:?}", j),
+            _ => panic!("expected jump not => {:?}", jmp_type),
         }
     }
 
