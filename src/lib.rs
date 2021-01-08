@@ -332,8 +332,8 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn call(&mut self) {
         self.expect(Token::Call);
-        let proc = self.tokens.next().unwrap().try_into().unwrap();
-        self.ops.push(Op::Call(proc));
+        let procedure = self.tokens.next().unwrap().try_into().unwrap();
+        self.ops.push(Op::Call(procedure));
     }
 
     fn jump(&mut self, jmp_type: Token, label: Token) {
