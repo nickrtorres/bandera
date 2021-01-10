@@ -271,7 +271,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         }
     }
 
-    fn expect(&mut self, expected: Token) {
+    fn eat(&mut self, expected: Token) {
         if !self.tokens.next().map_or(false, |actual| {
             discriminant(&expected) == discriminant(&actual)
         }) {
@@ -284,29 +284,29 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn mov(&mut self) {
-        self.expect(Token::Mov);
+        self.eat(Token::Mov);
         let dst = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
 
-        self.expect(Token::Comma);
+        self.eat(Token::Comma);
 
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::MovReg(dst, src)),
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::MovImm(dst, src)),
             Some(Token::Iden(s)) => self.ops.push(Op::MovVar(dst, s)),
             Some(Token::Word) => {
-                self.expect(Token::Ptr);
-                self.expect(Token::LeftBracket);
+                self.eat(Token::Ptr);
+                self.eat(Token::LeftBracket);
 
                 let src = self.tokens.next().unwrap().try_into().unwrap();
                 let offset = match self.tokens.peek() {
                     Some(Token::Plus) => {
-                        self.expect(Token::Plus);
+                        self.eat(Token::Plus);
                         let offset: u16 = self.tokens.next().unwrap().try_into().unwrap();
                         assert_eq!(0, offset % 2);
                         Some((OffsetOp::Add, offset / 2))
                     }
                     Some(Token::Minus) => {
-                        self.expect(Token::Minus);
+                        self.eat(Token::Minus);
                         let offset: u16 = self.tokens.next().unwrap().try_into().unwrap();
                         assert_eq!(0, offset % 2);
                         Some((OffsetOp::Subtract, offset / 2))
@@ -314,7 +314,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
                     _ => None,
                 };
 
-                self.expect(Token::RightBracket);
+                self.eat(Token::RightBracket);
                 self.ops.push(Op::MovMem(dst, src, offset))
             }
             t => panic!("{:?} -- invalid mov", t),
@@ -322,9 +322,9 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn add(&mut self) {
-        self.expect(Token::Add);
+        self.eat(Token::Add);
         let dst = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
-        self.expect(Token::Comma);
+        self.eat(Token::Comma);
         match self.tokens.next() {
             Some(Token::Reg(src)) => self.ops.push(Op::AddReg(dst, src)),
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::AddImmUnsigned(dst, src)),
@@ -333,7 +333,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn call(&mut self) {
-        self.expect(Token::Call);
+        self.eat(Token::Call);
         let procedure = self.tokens.next().unwrap().try_into().unwrap();
         self.ops.push(Op::Call(procedure));
     }
@@ -349,9 +349,9 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn cmp(&mut self) {
-        self.expect(Token::Cmp);
+        self.eat(Token::Cmp);
         let dst = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
-        self.expect(Token::Comma);
+        self.eat(Token::Comma);
         match self.tokens.next() {
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::CmpImm(dst, src as u16)),
             c => todo!("{}", format!("{:?}", c)),
@@ -359,21 +359,21 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn push(&mut self) {
-        self.expect(Token::Push);
+        self.eat(Token::Push);
         let src = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
         self.ops.push(Op::Push(src));
     }
 
     fn pop(&mut self) {
-        self.expect(Token::Pop);
+        self.eat(Token::Pop);
         let src = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
         self.ops.push(Op::Pop(src));
     }
 
     fn sub(&mut self) {
-        self.expect(Token::Sub);
+        self.eat(Token::Sub);
         let dst = RegisterTag::try_from(self.tokens.next().unwrap()).unwrap();
-        self.expect(Token::Comma);
+        self.eat(Token::Comma);
         match self.tokens.next() {
             Some(Token::UnsignedImm(src)) => self.ops.push(Op::SubImm(dst, src)),
             _ => panic!("invalid sub"),
@@ -381,7 +381,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn int(&mut self) {
-        self.expect(Token::Int);
+        self.eat(Token::Int);
         let vector = u16::try_from(self.tokens.next().unwrap()).unwrap();
         self.ops.push(Op::Int(vector));
     }
@@ -443,15 +443,15 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         assert!(self.pending_symbol.is_none());
         self.pending_symbol = Some(iden);
 
-        self.expect(Token::Proc);
+        self.eat(Token::Proc);
 
         self.instr_list();
 
-        self.expect(Token::Ret);
+        self.eat(Token::Ret);
 
         let word_count = if let Some(Token::UnsignedImm(n)) = self.tokens.peek() {
             let count = *n;
-            self.expect(Token::UnsignedImm(0));
+            self.eat(Token::UnsignedImm(0));
             assert_eq!(0, count % 2);
             count / 2
         } else {
@@ -459,8 +459,8 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         };
 
         self.ops.push(Op::Ret(word_count));
-        self.expect(Token::Iden(String::default()));
-        self.expect(Token::Endp);
+        self.eat(Token::Iden(String::default()));
+        self.eat(Token::Endp);
     }
 
     fn procedure_list(&mut self) {
@@ -475,7 +475,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn end(&mut self) {
-        self.expect(Token::End);
+        self.eat(Token::End);
         let symbol = String::try_from(self.tokens.next().unwrap()).unwrap();
         let offset = *self.symbol_table.get(&symbol).unwrap();
         self.symbol_table.insert(ENTRY_POINT.to_owned(), offset);
@@ -483,7 +483,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
 
     fn data_directive(&mut self) {
         let var = String::try_from(self.tokens.next().unwrap()).unwrap();
-        self.expect(Token::Db);
+        self.eat(Token::Db);
 
         let byte = ByteType::try_from(self.tokens.next().unwrap()).unwrap();
         let db = if let Some(Token::Comma) = self.tokens.peek() {
@@ -502,7 +502,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
             //
             let mut sequence = vec![byte];
             while let Some(Token::Comma) = self.tokens.peek() {
-                self.expect(Token::Comma);
+                self.eat(Token::Comma);
                 sequence.push(self.tokens.next().unwrap().try_into().unwrap());
             }
 
@@ -522,12 +522,12 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
     }
 
     fn data_segment(&mut self) {
-        self.expect(Token::DataSegment);
+        self.eat(Token::DataSegment);
         self.data_directive_list();
     }
 
     fn code_segment(&mut self) {
-        self.expect(Token::CodeSegment);
+        self.eat(Token::CodeSegment);
         self.stmt_list();
         self.end();
     }
