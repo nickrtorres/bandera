@@ -486,7 +486,7 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.expect(Token::Db);
 
         let byte = ByteType::try_from(self.tokens.next().unwrap()).unwrap();
-        if let Some(Token::Comma) = self.tokens.peek() {
+        let db = if let Some(Token::Comma) = self.tokens.peek() {
             //
             // At this point the parser has encountered a sequence of bytes
             // defined by the programmer, e.g.
@@ -500,24 +500,18 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
             //                  /  +--- self.tokens.next()
             //               byte
             //
-            let mut sequence = Vec::new();
-            sequence.push(byte);
-
-            loop {
+            let mut sequence = vec![byte];
+            while let Some(Token::Comma) = self.tokens.peek() {
                 self.expect(Token::Comma);
-
                 sequence.push(self.tokens.next().unwrap().try_into().unwrap());
-                if let Some(Token::Comma) = self.tokens.peek() {
-                    continue;
-                } else {
-                    break;
-                }
             }
 
-            self.data_table.insert(var, DefinedByte::Sequence(sequence));
+            DefinedByte::Sequence(sequence)
         } else {
-            self.data_table.insert(var, DefinedByte::Scalar(byte));
-        }
+            DefinedByte::Scalar(byte)
+        };
+
+        self.data_table.insert(var, db);
     }
 
     fn data_directive_list(&mut self) {
