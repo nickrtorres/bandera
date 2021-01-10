@@ -1,3 +1,4 @@
+.code
 increment proc
   add ax, 1
   ret

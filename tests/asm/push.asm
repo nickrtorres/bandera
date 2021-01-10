@@ -1,3 +1,4 @@
+.code
 foo proc
   ret 4 ; 2 args
 foo endp

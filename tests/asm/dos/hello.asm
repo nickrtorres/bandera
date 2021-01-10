@@ -1,5 +1,6 @@
 ; Writes "Hello, world!\n" to stdout
 
+.code
 WriteChar proc
   push bp
   mov bp, sp

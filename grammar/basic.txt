@@ -1,7 +1,7 @@
 <program>             ::= <data_segment> <code_segment>
 <program>             ::= <code_segment>
 
-<code_segment>        ::= .code <stmt_list> <end> halt
+<code_segment>        ::= .code <stmt_list> <end>
 
 <data_segment>        ::= .data <data_declaration_list>
 

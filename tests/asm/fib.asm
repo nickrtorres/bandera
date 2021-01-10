@@ -5,6 +5,7 @@
 ;
 ;     return fib(n-1) + fib(n-2);
 ; }
+.code
 fib proc
   push    bp
   mov     bp, sp

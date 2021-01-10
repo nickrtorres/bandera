@@ -1,3 +1,4 @@
+.code
 main:
   mov ah, 76
   mov al, 42

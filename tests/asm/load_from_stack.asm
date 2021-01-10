@@ -1,3 +1,4 @@
+.code
 foo proc
   push bp
   mov bp, sp

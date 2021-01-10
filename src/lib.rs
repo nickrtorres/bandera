@@ -20,6 +20,7 @@ pub enum Token {
     Add,
     Call,
     Cmp,
+    CodeSegment,
     Comma,
     DataSegment,
     Db,
@@ -173,6 +174,7 @@ pub fn lex(mut stream: Peekable<Chars>) -> Vec<Token> {
                     "dl" => tokens.push(Token::Reg(RegisterTag::Dl)),
                     "bp" => tokens.push(Token::Reg(RegisterTag::Bp)),
                     "sp" => tokens.push(Token::Reg(RegisterTag::Sp)),
+                    ".code" => tokens.push(Token::CodeSegment),
                     ".data" => tokens.push(Token::DataSegment),
                     "add" => tokens.push(Token::Add),
                     "call" => tokens.push(Token::Call),
@@ -527,13 +529,22 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.data_directive_list();
     }
 
+    fn code_segment(&mut self) {
+        self.expect(Token::CodeSegment);
+        self.stmt_list();
+        self.end();
+    }
+
     fn program(mut self) -> Program {
         if let Some(Token::DataSegment) = self.tokens.peek() {
             self.data_segment();
         }
 
-        self.stmt_list();
-        self.end();
+        self.code_segment();
+
+        // NB: The parser adds a final `Halt` instruction to the end of the op
+        // code list to inform the virtual machine that the program is over.
+        // This is _not_ part of the grammar.
         self.ops.push(Op::Halt);
         Program(self.symbol_table, self.data_table, self.ops)
     }
@@ -995,7 +1006,7 @@ mod tests {
 
     #[test]
     fn simple_parse() {
-        let tokens = lex("main:\nmov ax, 42\nend main".chars().peekable()).into_iter();
+        let tokens = lex(".code\nmain:\nmov ax, 42\nend main".chars().peekable()).into_iter();
         let mut ops = Parser::new(tokens.into_iter().peekable())
             .run()
             .2
@@ -1008,6 +1019,7 @@ mod tests {
     #[test]
     fn parse_labels() {
         let tokens = vec![
+            Token::CodeSegment,
             Token::Label(String::from("main")),
             Token::Add, // Op 0
             Token::Reg(RegisterTag::Ax),

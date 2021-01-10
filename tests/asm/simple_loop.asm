@@ -1,3 +1,4 @@
+.code
 main:
   mov ax, 0
 Loop:

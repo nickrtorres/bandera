@@ -1,3 +1,4 @@
+.code
 main:
   mov ax, 43
   sub ax, 1

@@ -2,9 +2,9 @@ Base features
 =============
 - [x] stack access by word
 - [ ] stack access by byte
-- [ ] data segments
 - [ ] loads from data segments
-- [ ] `.code` and `.data` parsing
+- [ ] `.code` parsing
+- [x] `.data` parsing
 - [ ] mem-to-reg loads and stores
 - [ ] various missing mnemonics 
   - [ ] multiplication and division instructions

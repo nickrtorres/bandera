@@ -1,4 +1,5 @@
 ; Loads a 16 bit integer into ax and bx 8 bits at a time.
+.code
 main:
   mov ah, 171 ; 0xAB
   mov al, 205 ; 0xCD

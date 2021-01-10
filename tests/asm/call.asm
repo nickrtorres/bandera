@@ -1,3 +1,4 @@
+.code
 foo proc
   mov ax, 42
   ret

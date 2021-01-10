@@ -1,3 +1,4 @@
+.code
 main:
   mov ax, 42
   add ax, ax
