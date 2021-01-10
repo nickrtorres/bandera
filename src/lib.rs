@@ -463,11 +463,14 @@ impl<I: Iterator<Item = Token> + Debug> Parser<I> {
         self.expect(Token::Endp);
     }
 
-    fn stmt_list(&mut self) {
-        if let Some(Token::Iden(_)) = self.tokens.peek() {
+    fn procedure_list(&mut self) {
+        while let Some(Token::Iden(_)) = self.tokens.peek() {
             self.procedure();
         }
+    }
 
+    fn stmt_list(&mut self) {
+        self.procedure_list();
         self.instr_list();
     }
 

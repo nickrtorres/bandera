@@ -18,6 +18,9 @@
 
 <end>                 ::= end iden
 
+<procedure_list>      ::= <procedure> <procedure_list>
+<procedure_list>      ::= <procedure>
+
 # NB: `ret` without an integer is syntactic sugar for `ret 0`.
 <procedure>           ::= iden proc <instr_list> ret iden endp
 <procedure>           ::= iden proc <instr_list> ret [0-9]+ iden endp

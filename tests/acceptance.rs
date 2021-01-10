@@ -169,3 +169,12 @@ fn variables() -> Result<()> {
     assert_eq!(actual, expected);
     Ok(())
 }
+
+#[test]
+fn multiple_procedures() -> Result<()> {
+    let actual = run("multiple_procedures.asm")?;
+    let expected = MachineState { ax: 100, bx: 42 };
+
+    assert_eq!(actual, expected);
+    Ok(())
+}
