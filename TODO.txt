@@ -3,7 +3,7 @@ Base features
 - [x] stack access by word
 - [ ] stack access by byte
 - [ ] loads from data segments
-- [ ] `.code` parsing
+- [x] `.code` parsing
 - [x] `.data` parsing
 - [ ] mem-to-reg loads and stores
 - [ ] various missing mnemonics 
