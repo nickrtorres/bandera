@@ -1,6 +1,7 @@
-Why the name?
+Bandera is a x86-16 bytecode virtual machine. It accepts a subset of MASM
+assembly language and DOS `int 21h` interrupts.
 
-Named after Vanderpool, the codename for Intel's x86 virtualization technology
-[1].  Bandera is the county that Vanderpool resides in.
+Bandera is named after Vanderpool, the codename for Intel's x86 virtualization
+technology [1].  Bandera is the county that Vanderpool resides in.
 
 [1] https://en.wikipedia.org/wiki/X86_virtualization#Intel-VT-x
